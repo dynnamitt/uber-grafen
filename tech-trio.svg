@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="170.21826mm"
+   height="79.119202mm"
+   viewBox="0 0 170.21826 79.119202"
+   version="1.1"
+   id="svg5"
+   inkscape:version="1.1.2 (0a00cf5339, 2022-02-04)"
+   sodipodi:docname="tech-trio.svg"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview7"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:pageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:document-units="mm"
+     showgrid="false"
+     fit-margin-top="0"
+     fit-margin-left="0"
+     fit-margin-right="0"
+     fit-margin-bottom="0"
+     inkscape:zoom="0.72871773"
+     inkscape:cx="129.67984"
+     inkscape:cy="421.97409"
+     inkscape:window-width="1920"
+     inkscape:window-height="1003"
+     inkscape:window-x="0"
+     inkscape:window-y="40"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="layer1" />
+  <defs
+     id="defs2" />
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1"
+     transform="translate(-13.662395,-37.205276)">
+    <rect
+       style="fill:none;stroke:#000000;stroke-width:2.265;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:5.11451"
+       id="rect846"
+       width="56.618782"
+       height="59.174019"
+       x="14.794895"
+       y="38.337776" />
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:10.5833px;line-height:1.25;font-family:'agave Nerd Font Mono';-inkscape-font-specification:'agave Nerd Font Mono';stroke-width:0.264583"
+       x="20.68033"
+       y="90.423836"
+       id="text2896"><tspan
+         sodipodi:role="line"
+         id="tspan2894"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:'agave Nerd Font Mono';-inkscape-font-specification:'agave Nerd Font Mono';stroke-width:0.264583"
+         x="20.68033"
+         y="90.423836">ray</tspan></text>
+    <rect
+       style="fill:none;stroke:#666666;stroke-width:2.265;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:19.3304"
+       id="rect5662-2"
+       width="55.651661"
+       height="58.862514"
+       x="127.0965"
+       y="47.640888" />
+    <text
+       xml:space="preserve"
+       style="font-size:22.5778px;line-height:1.25;font-family:Amiga;-inkscape-font-specification:Amiga;stroke-width:0.264583"
+       x="81.402206"
+       y="100.23587"
+       id="text7572"><tspan
+         sodipodi:role="line"
+         id="tspan7570"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:22.5778px;font-family:'agave Nerd Font Mono';-inkscape-font-specification:'agave Nerd Font Mono';stroke-width:0.264583"
+         x="81.402206"
+         y="100.23587">[Z]</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:22.5778px;line-height:1.25;font-family:Amiga;-inkscape-font-specification:'Amiga Bold';stroke-width:0.264583"
+       x="146.4944"
+       y="87.926857"
+       id="text25447"><tspan
+         sodipodi:role="line"
+         id="tspan25445"
+         style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:22.5778px;font-family:Amiga;-inkscape-font-specification:'Amiga Bold';stroke-width:0.264583"
+         x="146.4944"
+         y="87.926857">ë</tspan></text>
+    <rect
+       style="fill:none;stroke:#999999;stroke-width:2.265;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:19.3304"
+       id="rect5662"
+       width="55.651661"
+       height="58.862514"
+       x="71.413681"
+       y="56.32946" />
+  </g>
+</svg>

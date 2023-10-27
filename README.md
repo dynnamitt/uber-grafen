@@ -1,6 +1,6 @@
 # zig/raylib/flecs 
 
-![rayzigflecs](raylib_zig_flecs.png)
+![rayzigflecs](tech_trio.svg)
 
 
 ## What I did (and must do again to have uptodate libs)
