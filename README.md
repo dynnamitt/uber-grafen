@@ -18,5 +18,4 @@ zig fetch --save git+https://github.com/raylib-zig/raylib-zig#<commit>
 zig fetch --save git+https://github.com/zig-gamedev/zflecs#<commit>
 ```
 
-## TODO
-- publish zig-out/web to GitHub Pages
+Live demo (once Pages is enabled: Settings → Pages → Source: GitHub Actions): https://dynnamitt.github.io/uber-grafen/

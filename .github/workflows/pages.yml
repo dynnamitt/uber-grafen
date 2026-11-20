@@ -1,0 +1,52 @@
+name: pages
+
+# Publishes the browser build to GitHub Pages.
+# One-time setup: repo Settings → Pages → Source: "GitHub Actions".
+# Until then the deploy job fails; re-run it after enabling Pages.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.1
+
+      - name: Cache Emscripten SDK
+        uses: actions/cache@v4
+        with:
+          path: zig-pkg/N-V-__8AAJl1DwBezhYo_VE6f53mPVm00R-Fk28NPW7P14EQ
+          key: emsdk-${{ hashFiles('build.zig.zon') }}
+
+      - name: Build for the browser
+        run: zig build -Dtarget=wasm32-emscripten -Doptimize=ReleaseSmall --summary all
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: zig-out/web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

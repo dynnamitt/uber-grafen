@@ -25,7 +25,7 @@ The web build installs the Emscripten SDK on first use, into `zig-pkg/<emsdk has
 
 On Linux, raylib's GLFW backend needs X11/GL **dev headers** (`libx11-dev libxcursor-dev libxrandr-dev libxinerama-dev libxi-dev libgl-dev`). `zig build test` does not link raylib, so it works without them.
 
-CI (`.github/workflows/ci.yml`) runs on pull requests (and manually via workflow_dispatch). Job `build-test` runs fmt check → `zig build test` → `zig build`. Job `web` runs the emscripten build and uploads `zig-out/web` as the `web` artifact.
+CI (`.github/workflows/ci.yml`) runs on pull requests (and manually via workflow_dispatch). Job `build-test` runs fmt check → `zig build test` → `zig build`. Job `web` runs the emscripten build and uploads `zig-out/web` as the `web` artifact. `.github/workflows/pages.yml` runs the same web build on every push to `main` and deploys it to GitHub Pages (`https://dynnamitt.github.io/uber-grafen/`). That needs Settings → Pages → Source: **GitHub Actions**.
 
 ## Dependencies
 
