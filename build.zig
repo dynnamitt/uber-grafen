@@ -83,13 +83,7 @@ fn addWebBuild(
         .install_dir = .{ .custom = "web" },
         .out_file_name = "index.html", // index.* so the folder serves as-is (GitHub Pages)
     });
-    // emcc.py can't be spawned directly on Windows; use emcc.bat there.
-    if (builtin.os.tag == .windows) {
-        for (emcc_step.dependencies.items) |dep| {
-            const run = dep.cast(std.Build.Step.Run) orelse continue;
-            run.argv.items[0].lazy_path.lazy_path = try emsdk.path(b, "upstream/emscripten/emcc.bat");
-        }
-    }
+    if (builtin.os.tag == .windows) try useEmccBat(b, emcc_step);
     b.getInstallStep().dependOn(emcc_step);
 
     const emrun = try emsdk.emrunStep(b, b.graph.path(.install_prefix, "web/index.html"), &.{});
@@ -104,4 +98,16 @@ fn findStep(root: *std.Build.Step, name: []const u8) ?*std.Build.Step {
         if (findStep(dep, name)) |found| return found;
     }
     return null;
+}
+
+/// emcc.py can't be spawned directly on Windows: point emccStep's run step at
+/// emcc.bat. Mirrors raylib-zig's (private) fixEmccOnWindows: patch only the
+/// first Run step, and fail loudly if the layout ever changes.
+fn useEmccBat(b: *std.Build, emcc_step: *std.Build.Step) !void {
+    for (emcc_step.dependencies.items) |dep| {
+        const run = dep.cast(std.Build.Step.Run) orelse continue;
+        run.argv.items[0].lazy_path.lazy_path = try rlz.emsdk.path(b, "upstream/emscripten/emcc.bat");
+        return;
+    }
+    return error.EmccRunStepNotFound;
 }

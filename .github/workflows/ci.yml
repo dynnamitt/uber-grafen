@@ -39,12 +39,23 @@ jobs:
         with:
           version: 0.17.1
 
-      # The Emscripten SDK is installed into zig-pkg/ by the build itself.
+      # Cache the installed Emscripten SDK. Its location is the emsdk package
+      # hash; which SDK version gets installed is pinned by raylib (via
+      # raylib_zig), so key on both and nothing else in build.zig.zon.
+      - name: Emscripten SDK cache key
+        id: emsdk
+        run: |
+          pkg=$(sed -n '/\.emsdk = /,/}/ s/.*\.hash = "\([^"]*\)".*/\1/p' build.zig.zon)
+          rl=$(sed -n '/\.raylib_zig = /,/}/ s/.*\.hash = "\([^"]*\)".*/\1/p' build.zig.zon)
+          test -n "$pkg" && test -n "$rl"
+          echo "path=zig-pkg/$pkg" >> "$GITHUB_OUTPUT"
+          echo "key=emsdk-$pkg-$rl" >> "$GITHUB_OUTPUT"
+
       - name: Cache Emscripten SDK
         uses: actions/cache@v4
         with:
-          path: zig-pkg/N-V-__8AAJl1DwBezhYo_VE6f53mPVm00R-Fk28NPW7P14EQ
-          key: emsdk-${{ hashFiles('build.zig.zon') }}
+          path: ${{ steps.emsdk.outputs.path }}
+          key: ${{ steps.emsdk.outputs.key }}
 
       - name: Build for the browser
         run: zig build -Dtarget=wasm32-emscripten -Doptimize=ReleaseSmall --summary all

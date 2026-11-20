@@ -16,13 +16,16 @@
   <canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
   <div id="status">loading…</div>
   <script>
+    var started = false;
     var Module = {
       canvas: document.getElementById("canvas"),
+      onRuntimeInitialized: function () { started = true; },
       setStatus: function (text) { document.getElementById("status").textContent = text; },
       print: function (text) { console.log(text); },
       printErr: function (text) { console.error(text); },
     };
-    window.onerror = function () { Module.setStatus("failed to start — see the console"); };
+    // Only startup failures replace the canvas status; later errors just log.
+    window.onerror = function () { if (!started) Module.setStatus("failed to start — see the console"); };
   </script>
   {{{ SCRIPT }}}
 </body>

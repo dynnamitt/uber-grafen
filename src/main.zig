@@ -31,7 +31,7 @@ pub fn main() !void {
 
         // Orbit guide, then every Position + Ball entity.
         const c = ecs.get(world, demo.center, sim.Position).?;
-        rl.drawCircleLinesV(.{ .x = c.x, .y = c.y }, 150, rl.getColor(0x2E3440FF));
+        rl.drawCircleLinesV(.{ .x = c.x, .y = c.y }, demo.radius, rl.getColor(0x2E3440FF));
 
         var it = ecs.query_iter(world, balls);
         while (ecs.query_next(&it)) {

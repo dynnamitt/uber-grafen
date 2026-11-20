@@ -72,7 +72,7 @@ pub const FixedClock = struct {
     }
 };
 
-pub const Demo = struct { center: ecs.entity_t, orbiter: ecs.entity_t };
+pub const Demo = struct { center: ecs.entity_t, orbiter: ecs.entity_t, radius: f32 };
 
 /// A static ball at (`cx`, `cy`) and a second ball circling it at `radius`,
 /// once every `period` seconds. Speed and pull are chosen so the orbit is an
@@ -91,7 +91,7 @@ pub fn spawnDemo(world: *ecs.world_t, cx: f32, cy: f32, radius: f32, period: f32
     _ = ecs.set(world, orbiter, Orbits, .{ .center = center });
     _ = ecs.set(world, orbiter, Ball, .{ .radius = 10, .rgba = 0x4A90E2FF });
 
-    return .{ .center = center, .orbiter = orbiter };
+    return .{ .center = center, .orbiter = orbiter, .radius = radius };
 }
 
 /// Query over every drawable entity: term 0 = `Position`, term 1 = `Ball`.
