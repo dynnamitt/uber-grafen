@@ -29,3 +29,30 @@ jobs:
 
       - name: Build app
         run: zig build --summary all
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.1
+
+      # The Emscripten SDK is installed into zig-pkg/ by the build itself.
+      - name: Cache Emscripten SDK
+        uses: actions/cache@v4
+        with:
+          path: zig-pkg/N-V-__8AAJl1DwBezhYo_VE6f53mPVm00R-Fk28NPW7P14EQ
+          key: emsdk-${{ hashFiles('build.zig.zon') }}
+
+      - name: Build for the browser
+        run: zig build -Dtarget=wasm32-emscripten -Doptimize=ReleaseSmall --summary all
+
+      - name: Show output
+        run: ls -la zig-out/web
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web
+          path: zig-out/web

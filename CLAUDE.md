@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-`uber-graphen` — Zig scaffold combining **Raylib** (window + rendering, via `raylib-zig`) and **Flecs ECS** (via `zflecs`). `src/main.zig` renders a two-ball orbit demo driven by the ECS. Native desktop only for now (no web target).
+`uber-graphen` — Zig scaffold combining **Raylib** (window + rendering, via `raylib-zig`) and **Flecs ECS** (via `zflecs`). `src/main.zig` renders a two-ball orbit demo driven by the ECS. Builds natively and for the browser (`wasm32-emscripten`).
 
 ## Toolchain
 
@@ -17,11 +17,15 @@ zig build                    # compile → zig-out/bin/uber-graphen
 zig build run                # compile and launch
 zig build test               # headless unit tests (src/sim.zig); single test: zig build test -Dtest-filter="<name>"
 zig fmt --check build.zig build.zig.zon src   # formatting check, as CI runs it
+zig build -Dtarget=wasm32-emscripten -Doptimize=ReleaseSmall   # web → zig-out/web/index.{html,js,wasm}
+zig build run -Dtarget=wasm32-emscripten                       # web build + serve with emrun
 ```
+
+The web build installs the Emscripten SDK on first use, into `zig-pkg/<emsdk hash>/` via raylib's "Activate EMSDK" step. That needs network access to github.com and storage.googleapis.com, and no system emsdk or `EMSDK` variable.
 
 On Linux, raylib's GLFW backend needs X11/GL **dev headers** (`libx11-dev libxcursor-dev libxrandr-dev libxinerama-dev libxi-dev libgl-dev`). `zig build test` does not link raylib, so it works without them.
 
-CI (`.github/workflows/ci.yml`) runs fmt check → `zig build test` → `zig build` on pull requests (and manually via workflow_dispatch).
+CI (`.github/workflows/ci.yml`) runs on pull requests (and manually via workflow_dispatch). Job `build-test` runs fmt check → `zig build test` → `zig build`. Job `web` runs the emscripten build and uploads `zig-out/web` as the `web` artifact.
 
 ## Dependencies
 
@@ -39,6 +43,13 @@ Transitive deps: raylib-zig → raylib, raygui, emsdk; zflecs → translate-c �
 Current demo: a static `Attractor` ball and an `Orbits` ball circling it. `gravity` runs in `PreUpdate` and `move` in `OnUpdate`, which makes it semi-implicit Euler: the orbit stays bounded (radius wobbles ~±3% at 120 steps/orbit) instead of spiralling out. Keep that phase order if you add systems.
 
 Keep that boundary: systems that change state go in `sim`. Rendering reads ECS data from the main/render side, so the renderer can be swapped later.
+
+### Web build (`addWebBuild` in build.zig)
+
+- The app is compiled as a static library. raylib-zig's `emsdk.emccStep` then links it with raylib and flecs (it picks up libraries linked into the module graph) into `zig-out/web/index.*`, using `web/shell.html` as the page template.
+- **zflecs has no emscripten support**, so `build.zig` adds the emsdk sysroot include path to the `flecs` artifact. It also makes that artifact depend on **raylib's existing** "Activate EMSDK" step, found with `findStep`. Do not call `emsdk.activateEmsdkStep(b)` a second time: two activations run `emsdk update/install` concurrently in the same directory.
+- `emsdk` must stay in **our** `build.zig.zon` (lazy). raylib-zig's helpers resolve it from the root build.
+- `-sASYNCIFY` (on by default) lets `main`'s plain `while` loop yield to the browser, so `main.zig` has no web-specific code.
 
 ### ECS conventions (zflecs)
 
