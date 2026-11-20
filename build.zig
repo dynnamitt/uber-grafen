@@ -1,49 +1,41 @@
 const std = @import("std");
-const rl = @import("raylib-zig/build.zig");
-const zflecs = @import("zflecs/build.zig");
 
-pub fn build(b: *std.Build) !void {
+pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    var raylib = rl.getModule(b, "raylib-zig");
-    var raylib_math = rl.math.getModule(b, "raylib-zig");
+    const raylib_dep = b.dependency("raylib_zig", .{ .target = target, .optimize = optimize });
+    const zflecs_dep = b.dependency("zflecs", .{ .target = target, .optimize = optimize });
 
-    const zflecs_pkg = zflecs.package(b, target, optimize, .{});
+    // ECS-only code (components + systems). No raylib here, so it tests headless.
+    const sim_mod = b.createModule(.{
+        .root_source_file = b.path("src/sim.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    sim_mod.addImport("zflecs", zflecs_dep.module("root"));
+    sim_mod.linkLibrary(zflecs_dep.artifact("flecs"));
 
-    //web exports are completely separate
-    if (target.getOsTag() == .emscripten) {
-        const exe_lib = rl.compileForEmscripten(b, "uber-graphen", "src/main.zig", target, optimize);
-        exe_lib.addModule("raylib", raylib);
-        exe_lib.addModule("raylib-math", raylib_math);
-        const raylib_artifact = rl.getArtifact(b, target, optimize);
+    const exe_mod = b.createModule(.{
+        .root_source_file = b.path("src/main.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    exe_mod.addImport("raylib", raylib_dep.module("raylib"));
+    exe_mod.linkLibrary(raylib_dep.artifact("raylib"));
+    exe_mod.addImport("zflecs", zflecs_dep.module("root"));
+    exe_mod.addImport("sim", sim_mod);
 
-        // Note that raylib itself is not actually added to the exe_lib output file, so it also needs to be linked with emscripten.
-        exe_lib.linkLibrary(raylib_artifact);
-
-        const link_step = try rl.linkWithEmscripten(b, &[_]*std.Build.Step.Compile{ exe_lib, raylib_artifact });
-
-        b.getInstallStep().dependOn(&link_step.step);
-
-        const run_step = try rl.emscriptenRunStep(b);
-
-        run_step.step.dependOn(&link_step.step);
-        const run_option = b.step("run", "Run uber-graphen");
-        run_option.dependOn(&run_step.step);
-        return;
-    }
-
-    const exe = b.addExecutable(.{ .name = "uber-graphen", .root_source_file = .{ .path = "src/main.zig" }, .optimize = optimize, .target = target });
-
-    rl.link(b, exe, target, optimize);
-    zflecs_pkg.link(exe);
-
-    exe.addModule("raylib", raylib);
-    exe.addModule("raylib-math", raylib_math);
+    const exe = b.addExecutable(.{ .name = "uber-graphen", .root_module = exe_mod });
+    b.installArtifact(exe);
 
     const run_cmd = b.addRunArtifact(exe);
-    const run_step = b.step("run", "Run uber-graphen");
-    run_step.dependOn(&run_cmd.step);
+    run_cmd.step.dependOn(b.getInstallStep());
+    run_cmd.addPassthruArgs();
+    b.step("run", "Build and launch the app").dependOn(&run_cmd.step);
 
-    b.installArtifact(exe);
+    // Filters are compile-time in Zig: zig build test -Dtest-filter="<substring>"
+    const test_filters = b.option([]const []const u8, "test-filter", "Only run tests whose name contains this") orelse &.{};
+    const sim_tests = b.addTest(.{ .root_module = sim_mod, .filters = test_filters });
+    b.step("test", "Run unit tests (headless)").dependOn(&b.addRunArtifact(sim_tests).step);
 }

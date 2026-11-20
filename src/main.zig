@@ -1,38 +1,24 @@
-// raylib-zig (c) Nikolas Wipper 2023
-
 const rl = @import("raylib");
 const ecs = @import("zflecs");
+const sim = @import("sim");
 
-pub fn main() anyerror!void {
-    // Initialization
-    //--------------------------------------------------------------------------------------
-    const screenWidth = 800;
-    const screenHeight = 450;
-
-    rl.initWindow(screenWidth, screenHeight, "raylib-zig [core] example - basic window");
-    defer rl.closeWindow(); // Close window and OpenGL context
+pub fn main() !void {
+    rl.initWindow(800, 450, "uber-graphen");
+    defer rl.closeWindow();
+    rl.setTargetFPS(60);
 
     const world = ecs.init();
     defer _ = ecs.fini(world);
+    sim.register(world);
 
-    rl.setTargetFPS(60); // Set our game to run at 60 frames-per-second
-    //--------------------------------------------------------------------------------------
+    while (!rl.windowShouldClose()) {
+        // raylib reports 0 on the first frame; flecs treats 0 as "measure it
+        // yourself", so clamp to keep the ECS on raylib's clock.
+        _ = ecs.progress(world, @max(rl.getFrameTime(), 1.0 / 60.0));
 
-    // Main game loop
-    while (!rl.windowShouldClose()) { // Detect window close button or ESC key
-        // Update
-        //----------------------------------------------------------------------------------
-        // TODO: Update your variables here
-        //----------------------------------------------------------------------------------
-
-        // Draw
-        //----------------------------------------------------------------------------------
         rl.beginDrawing();
         defer rl.endDrawing();
-
-        rl.clearBackground(rl.Color.white);
-
-        rl.drawText("Congrats! You created your first window!", 190, 200, 20, rl.Color.light_gray);
-        //----------------------------------------------------------------------------------
+        rl.clearBackground(.white);
+        rl.drawText("uber-graphen: raylib + flecs", 190, 200, 20, .light_gray);
     }
 }
