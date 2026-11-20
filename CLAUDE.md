@@ -4,39 +4,40 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-`uber-graphen` — Zig scaffold combining **Raylib** (window + rendering, via `raylib-zig`) and **Flecs ECS** (via vendored `zflecs`). Only the wiring exists: `src/main.zig` opens a window, creates a Flecs world, and runs an empty Raylib loop. No components, systems or game logic yet.
+`uber-graphen` — Zig scaffold combining **Raylib** (window + rendering, via `raylib-zig`) and **Flecs ECS** (via `zflecs`). `src/main.zig` is a placeholder window loop that drives the ECS world; real application logic has not been written yet. Native desktop only for now (no web target).
 
-## Toolchain: Zig 0.11.x only
+## Toolchain
 
-The build scripts (`build.zig`, `zflecs/build.zig`) use the **Zig 0.11** `std.Build` API: `std.zig.CrossTarget`, `std.Build.CompileStep`, `target.getOsTag()`, `exe.addModule(...)`, `.{ .path = ... }` LazyPaths, `createModule(.{ .source_file = ... })`. All of these were renamed or removed in 0.12+. Use a 0.11 compiler. Moving to a newer Zig means porting both build files **and** updating the `raylib-zig` submodule plus re-vendoring `zflecs` together, because they have to match the same API.
+**Zig 0.17.x** (`minimum_zig_version = "0.17.0"`; CI pins 0.17.1). Both dependencies require 0.17. The 0.17 API differs from older tutorials: modules come from `b.createModule` + `exe_mod.linkLibrary(...)`; run args use `run_cmd.addPassthruArgs()` (there is no `b.args`); `zig init`'s `main` takes `std.process.Init`.
 
 ## Commands
 
 ```sh
-zig build                        # compile → zig-out/bin/uber-graphen
-zig build run                    # compile and launch
-cd zflecs && zig build test      # zflecs binding tests (zflecs/src/zflecs.zig); the app itself has no tests
-make web_target                  # WASM/HTML5: zig build run -Dtarget=wasm32-emscripten --sysroot $EMSDK/upstream/emscripten
-make clean                       # rm -rf zig-cache zig-out
+zig build                    # compile → zig-out/bin/uber-graphen
+zig build run                # compile and launch
+zig build test               # headless unit tests (src/sim.zig); single test: zig build test -- --test-filter "<name>"
+zig fmt --check build.zig build.zig.zon src   # formatting check, as CI runs it
 ```
 
-No lint step is configured (`zig fmt` is the conventional formatter).
+On Linux, raylib's GLFW backend needs X11/GL **dev headers** (`libx11-dev libxcursor-dev libxrandr-dev libxinerama-dev libxi-dev libgl-dev`). `zig build test` does not link raylib, so it works without them.
 
-## Dependencies — read before building
+CI (`.github/workflows/ci.yml`) runs fmt check → `zig build test` → `zig build` on pushes to `main` and on PRs.
 
-| Path | What | Notes |
-|---|---|---|
-| `raylib-zig/` | git submodule (Not-Nik/raylib-zig) pinned at `239d3a2` | `.gitmodules` sets `url = ./raylib-zig`, a self-referential relative path, so `git submodule update --init` **cannot fetch it** and the directory is empty in a fresh clone. To build, check out Not-Nik/raylib-zig at that commit into `raylib-zig/`, or fix the URL. `build.zig` does `@import("raylib-zig/build.zig")`, so the build fails at once without it. |
-| `zflecs/` | plain copy of `libs/zflecs` from michal-z/zig-gamedev | Not a submodule. Compiles `libs/flecs/flecs.c` into a static lib with `-DFLECS_NO_CPP -DFLECS_USE_OS_ALLOC` (plus `-DFLECS_SANITIZE` in Debug). Updating it means copying it over again (see README). |
-| `build.zig.zon` | pins the raylib **C** source tarball | Still carries the template's `.name = "raylib-zig"`. Its `raylib` dependency is what `raylib-zig/build.zig` resolves. |
+## Dependencies
 
-## Build architecture
+Pinned by commit + content hash in `build.zig.zon`: `raylib_zig` (raylib-zig org — moved from Not-Nik/raylib-zig) and `zflecs` (zig-gamedev, bundles flecs v4.1.x). Update with `zig fetch --save git+https://github.com/<repo>#<commit>`. Zig 0.17 unpacks packages into a **project-local `zig-pkg/`** directory (gitignored), not only the global cache.
 
-`build.zig` imports the helper `build.zig` files of both deps and branches on the target OS:
+Transitive deps: raylib-zig → raylib, raygui, emsdk; zflecs → translate-c → arocc (both on **codeberg.org**). Fetching needs github.com and codeberg.org.
 
-- **Native**: `rl.link` + `zflecs_pkg.link(exe)`, then exposes modules `raylib`, `raylib-math` and `zflecs` to `src/main.zig`.
-- **Emscripten**: returns early on a separate path. `rl.compileForEmscripten` builds a static lib, and `rl.linkWithEmscripten` links it with the raylib artifact into HTML5/WASM. **zflecs is never linked on this path** (the known TODO). Because `main.zig` imports `zflecs`, the web build is broken until `zflecs_pkg.link(exe_lib)` is added and the flecs C lib is passed to `linkWithEmscripten`.
+## Architecture
 
-## ECS conventions (zflecs)
+`build.zig` defines two modules:
 
-Components are plain Zig structs registered on the world. Systems are callbacks bound to a query and a phase (e.g. `ecs.OnUpdate`). Run the world each frame with `ecs.progress(world, delta_time)` inside the Raylib loop, between `beginDrawing`/`endDrawing` or before them. `zflecs/README.md` has API examples, and `zflecs/src/tests.zig` has working usage of the binding.
+- **`sim`** (`src/sim.zig`): components, systems and `register(world)`. Imports only `zflecs`, never raylib. This is the test root, so ECS logic stays testable without a window or GPU. Keep game state and systems here (or in files it imports).
+- **exe root** (`src/main.zig`): imports `raylib`, `zflecs` and `sim`. Owns the window and the frame loop: `ecs.progress(world, rl.getFrameTime())` then draw.
+
+Keep that boundary: systems that change state go in `sim`. Rendering reads ECS data from the main/render side, so the renderer can be swapped later.
+
+### ECS conventions (zflecs)
+
+Components are plain Zig structs registered with `ecs.COMPONENT`. Systems are registered with `ecs.ADD_SYSTEM(world, name, phase, fn)`, where `fn` takes slices of components (optionally `*ecs.iter_t` first, e.g. for `it.delta_time`). The zflecs README and its `src/tests.zig` (in `zig-pkg/zflecs-*/`) are the best API reference.

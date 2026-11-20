@@ -1,10 +1,17 @@
 .{
-    .name = "raylib-zig",
+    .name = .uber_grafen,
     .version = "0.1.0",
+    .fingerprint = 0xf75f284c11203be4,
+    .minimum_zig_version = "0.17.0",
     .dependencies = .{
-        .raylib = .{
-            .url = "https://github.com/raysan5/raylib/archive/6094869e3e845e90e1e8ae41b98e889fb3e13e78.tar.gz",
-            .hash = "12203b7a16bcf8d7fe4c9990a46d92b6f2e35531a4b82eb3bdf8ba4a0dbcc5f21415",
+        .raylib_zig = .{
+            .url = "git+https://github.com/raylib-zig/raylib-zig#28bbe30112f605da918db00eff53a75ce1aa9180",
+            .hash = "raylib_zig-6.2.0-KE8RELGmBQDX1v1DqBN57pNxJ-b-MIa1S-M7NXT9Eplr",
+        },
+        .zflecs = .{
+            .url = "git+https://github.com/zig-gamedev/zflecs#d753086b63d9e6bffa717281e8e20545d97c8fc9",
+            .hash = "zflecs-0.2.0-dev-1PN3ylsRQQCt-UP1m3L4u7so5UNbnaCCgz4OGyudqe_u",
         },
     },
+    .paths = .{ "build.zig", "build.zig.zon", "src" },
 }

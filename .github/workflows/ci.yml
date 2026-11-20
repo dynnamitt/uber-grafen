@@ -1,0 +1,32 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.1
+
+      # raylib's GLFW backend compiles against X11 + GL headers.
+      - name: Install X11/GL dev packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libx11-dev libxcursor-dev libxrandr-dev \
+            libxinerama-dev libxi-dev libgl-dev
+
+      - name: Format check
+        run: zig fmt --check build.zig build.zig.zon src
+
+      - name: Unit tests (headless)
+        run: zig build test --summary all
+
+      - name: Build app
+        run: zig build --summary all
