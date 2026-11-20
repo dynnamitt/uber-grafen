@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-`uber-graphen` — Zig scaffold combining **Raylib** (window + rendering, via `raylib-zig`) and **Flecs ECS** (via `zflecs`). `src/main.zig` is a placeholder window loop that drives the ECS world; real application logic has not been written yet. Native desktop only for now (no web target).
+`uber-graphen` — Zig scaffold combining **Raylib** (window + rendering, via `raylib-zig`) and **Flecs ECS** (via `zflecs`). `src/main.zig` renders a two-ball orbit demo driven by the ECS. Native desktop only for now (no web target).
 
 ## Toolchain
 
@@ -33,8 +33,10 @@ Transitive deps: raylib-zig → raylib, raygui, emsdk; zflecs → translate-c �
 
 `build.zig` defines two modules:
 
-- **`sim`** (`src/sim.zig`): components, systems and `register(world)`. Imports only `zflecs`, never raylib. This is the test root, so ECS logic stays testable without a window or GPU. Keep game state and systems here (or in files it imports).
-- **exe root** (`src/main.zig`): imports `raylib`, `zflecs` and `sim`. Owns the window and the frame loop: `ecs.progress(world, rl.getFrameTime())` then draw. The frame delta is clamped to ≥ 1/60 s, because raylib's first-frame 0 would make flecs fall back to its own clock.
+- **`sim`** (`src/sim.zig`): components, systems, `register(world)` and `spawnDemo`. Imports only `zflecs`, never raylib (colours are `u32` 0xRRGGBBAA). This is the test root, so ECS logic stays testable without a window or GPU. Keep game state and systems here (or in files it imports).
+- **exe root** (`src/main.zig`): imports `raylib`, `zflecs` and `sim`. Owns the window and the frame loop: `ecs.progress(world, dt)`, then draws every `Position + Ball` entity via `sim.ballQuery`. raylib's first-frame `dt` of 0 is replaced with 1/60 (flecs would otherwise measure its own); real frame times are never floored.
+
+Current demo: a static `Attractor` ball and an `Orbits` ball circling it. `gravity` runs in `PreUpdate` and `move` in `OnUpdate`, which makes it semi-implicit Euler: the orbit stays bounded (radius wobbles ~±3% at 120 steps/orbit) instead of spiralling out. Keep that phase order if you add systems.
 
 Keep that boundary: systems that change state go in `sim`. Rendering reads ECS data from the main/render side, so the renderer can be swapped later.
 
