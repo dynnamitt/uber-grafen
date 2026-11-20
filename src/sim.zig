@@ -50,6 +50,28 @@ fn move(it: *ecs.iter_t, positions: []Position, velocities: []const Velocity) vo
     }
 }
 
+/// Fixed simulation step. The sim always advances in these steps, whatever
+/// the frame rate, so it behaves the same everywhere (and matches the tests).
+pub const step_dt: f32 = 1.0 / 60.0;
+/// Most steps one frame may run. A longer frame (tab hidden, window dragged,
+/// debugger pause) drops the backlog instead of applying one huge `dt`, which
+/// would fling the orbiter out of orbit for good.
+pub const max_steps_per_frame: u32 = 5;
+
+/// Turns variable frame times into a count of fixed `step_dt` steps.
+pub const FixedClock = struct {
+    acc: f32 = 0,
+
+    /// Adds `frame_dt` seconds; returns how many `step_dt` steps to run now.
+    pub fn advance(self: *FixedClock, frame_dt: f32) u32 {
+        self.acc += @max(frame_dt, 0);
+        var n: u32 = 0;
+        while (self.acc >= step_dt and n < max_steps_per_frame) : (n += 1) self.acc -= step_dt;
+        if (self.acc >= step_dt) self.acc = 0; // too far behind: drop it
+        return n;
+    }
+};
+
 pub const Demo = struct { center: ecs.entity_t, orbiter: ecs.entity_t };
 
 /// A static ball at (`cx`, `cy`) and a second ball circling it at `radius`,
@@ -89,7 +111,7 @@ const expect = std.testing.expect;
 const expectApproxEqAbs = std.testing.expectApproxEqAbs;
 
 fn step(world: *ecs.world_t, n: usize) void {
-    for (0..n) |_| _ = ecs.progress(world, 1.0 / 60.0);
+    for (0..n) |_| _ = ecs.progress(world, step_dt);
 }
 
 fn distance(a: Position, b: Position) f32 {
@@ -164,6 +186,35 @@ test "each period brings the orbiter back to its start" {
         step(world, 120);
         const o = ecs.get(world, d.orbiter, Position).?.*;
         try expect(distance(o, .{ .x = 100, .y = 0 }) < 100 * 0.05);
+    }
+}
+
+test "FixedClock: fractional frames carry over" {
+    var clock: FixedClock = .{};
+    try std.testing.expectEqual(@as(u32, 0), clock.advance(0)); // raylib's first frame
+    try std.testing.expectEqual(@as(u32, 2), clock.advance(step_dt * 2.5));
+    try std.testing.expectEqual(@as(u32, 1), clock.advance(step_dt * 0.6)); // 0.5 + 0.6 carried
+}
+
+test "FixedClock: a long stall is capped and its backlog dropped" {
+    var clock: FixedClock = .{};
+    try std.testing.expectEqual(max_steps_per_frame, clock.advance(3.0));
+    try std.testing.expectEqual(@as(u32, 0), clock.advance(0));
+}
+
+test "orbit survives a 3 s frame stall" {
+    const world = ecs.init();
+    defer _ = ecs.fini(world);
+    register(world);
+    const d = spawnDemo(world, 0, 0, 100, 2);
+
+    var clock: FixedClock = .{};
+    step(world, 30);
+    for (0..clock.advance(3.0)) |_| _ = ecs.progress(world, step_dt);
+    for (0..120) |_| {
+        for (0..clock.advance(step_dt)) |_| _ = ecs.progress(world, step_dt);
+        const o = ecs.get(world, d.orbiter, Position).?;
+        try expectApproxEqAbs(@as(f32, 100), distance(.{ .x = 0, .y = 0 }, o.*), 100 * 0.03);
     }
 }
 

@@ -18,12 +18,12 @@ pub fn main() !void {
     const balls = try sim.ballQuery(world);
     defer ecs.query_fini(balls);
 
+    var clock: sim.FixedClock = .{};
     while (!rl.windowShouldClose()) {
-        // raylib reports 0 on the first frame, and flecs treats 0 as "measure
-        // it yourself"; substitute one nominal frame so the ECS stays on
-        // raylib's clock. Never floor real frame times (high-refresh screens).
-        const ft = rl.getFrameTime();
-        _ = ecs.progress(world, if (ft > 0) ft else 1.0 / 60.0);
+        // Fixed steps, never raylib's raw dt: a long frame would otherwise
+        // throw the orbit off for good, and dt=0 (first frame) would make
+        // flecs measure its own clock.
+        for (0..clock.advance(rl.getFrameTime())) |_| _ = ecs.progress(world, sim.step_dt);
 
         rl.beginDrawing();
         defer rl.endDrawing();

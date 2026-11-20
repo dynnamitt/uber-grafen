@@ -38,7 +38,7 @@ Transitive deps: raylib-zig → raylib, raygui, emsdk; zflecs → translate-c �
 `build.zig` defines two modules:
 
 - **`sim`** (`src/sim.zig`): components, systems, `register(world)` and `spawnDemo`. Imports only `zflecs`, never raylib (colours are `u32` 0xRRGGBBAA). This is the test root, so ECS logic stays testable without a window or GPU. Keep game state and systems here (or in files it imports).
-- **exe root** (`src/main.zig`): imports `raylib`, `zflecs` and `sim`. Owns the window and the frame loop: `ecs.progress(world, dt)`, then draws every `Position + Ball` entity via `sim.ballQuery`. raylib's first-frame `dt` of 0 is replaced with 1/60 (flecs would otherwise measure its own); real frame times are never floored.
+- **exe root** (`src/main.zig`): imports `raylib`, `zflecs` and `sim`. Owns the window and the frame loop. `sim.FixedClock` turns raylib's frame time into fixed `sim.step_dt` (1/60 s) steps, at most `max_steps_per_frame` per frame (any further backlog is dropped). Each step calls `ecs.progress(world, sim.step_dt)`, then the frame draws every `Position + Ball` entity via `sim.ballQuery`. Never pass raw frame time to `ecs.progress`: a long frame (hidden tab, dragged window) flings the orbiter out for good, and dt=0 makes flecs measure its own clock.
 
 Current demo: a static `Attractor` ball and an `Orbits` ball circling it. `gravity` runs in `PreUpdate` and `move` in `OnUpdate`, which makes it semi-implicit Euler: the orbit stays bounded (radius wobbles ~±3% at 120 steps/orbit) instead of spiralling out. Keep that phase order if you add systems.
 
