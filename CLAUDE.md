@@ -21,7 +21,7 @@ zig fmt --check build.zig build.zig.zon src   # formatting check, as CI runs it
 
 On Linux, raylib's GLFW backend needs X11/GL **dev headers** (`libx11-dev libxcursor-dev libxrandr-dev libxinerama-dev libxi-dev libgl-dev`). `zig build test` does not link raylib, so it works without them.
 
-CI (`.github/workflows/ci.yml`) runs fmt check → `zig build test` → `zig build` on pushes to `main` and on PRs.
+CI (`.github/workflows/ci.yml`) runs fmt check → `zig build test` → `zig build` on every push and PR (and manually via workflow_dispatch).
 
 ## Dependencies
 
