@@ -12,7 +12,9 @@ pub fn main() !void {
     sim.register(world);
 
     while (!rl.windowShouldClose()) {
-        _ = ecs.progress(world, rl.getFrameTime());
+        // raylib reports 0 on the first frame; flecs treats 0 as "measure it
+        // yourself", so clamp to keep the ECS on raylib's clock.
+        _ = ecs.progress(world, @max(rl.getFrameTime(), 1.0 / 60.0));
 
         rl.beginDrawing();
         defer rl.endDrawing();

@@ -34,6 +34,8 @@ pub fn build(b: *std.Build) void {
     run_cmd.addPassthruArgs();
     b.step("run", "Build and launch the app").dependOn(&run_cmd.step);
 
-    const sim_tests = b.addTest(.{ .root_module = sim_mod });
+    // Filters are compile-time in Zig: zig build test -Dtest-filter="<substring>"
+    const test_filters = b.option([]const []const u8, "test-filter", "Only run tests whose name contains this") orelse &.{};
+    const sim_tests = b.addTest(.{ .root_module = sim_mod, .filters = test_filters });
     b.step("test", "Run unit tests (headless)").dependOn(&b.addRunArtifact(sim_tests).step);
 }
