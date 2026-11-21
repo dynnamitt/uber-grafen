@@ -10,12 +10,21 @@ const height = 450;
 const background = 0x0E1414FF; // near-black teal
 const orbit_guide = 0x1E5252FF; // deep teal
 
-const newcomer_start_x = -16; // just off the left edge
-// FPS counter: top-right, raylib's default font size. The buffer fits any i32.
-const fps_x = width - 96;
-const fps_y = 16;
-const fps_font_size = 20;
-const fps_buf_len = 32;
+// Newcomers: `newcomer_count` balls enter from random angles, between
+// `newcomer_max_dist - newcomer_jitter` and `newcomer_max_dist` from the
+// attractor, all beyond the corners of the canvas (+ ball-size margin).
+const newcomer_count = 1000;
+const newcomer_max_dist = 600;
+const newcomer_jitter = 100;
+comptime {
+    std.debug.assert(newcomer_max_dist - newcomer_jitter > @sqrt(@as(f32, width * width + height * height)) / 2 + 16);
+}
+// Perf readout: top-right, right-aligned, raylib's default font size.
+// The buffer fits any i32 FPS and any f32 ms pair.
+const stats_margin = 16;
+const stats_font_size = 20;
+const stats_line_gap = 4;
+const stats_buf_len = 64;
 // emscripten_set_main_loop args: fps 0 = requestAnimationFrame; nonzero
 // simulate_infinite_loop = never return from main.
 const web_loop_fps = 0;
@@ -62,6 +71,7 @@ var world: *ecs.world_t = undefined;
 var demo: sim.Demo = undefined;
 var balls: *ecs.query_t = undefined;
 var clock: sim.FixedClock = .{};
+var stats: sim.FrameStats = .{};
 
 pub fn main() !void {
     rl.initWindow(width, height, "uber-graphen");
@@ -71,7 +81,9 @@ pub fn main() !void {
     defer _ = ecs.fini(world);
     sim.register(world);
     demo = sim.spawnDemo(world, width / 2, height / 2, 150, 4);
-    _ = sim.spawnNewcomer(world, demo, newcomer_start_x);
+    // raylib seeds its RNG from the clock in initWindow.
+    var prng = std.Random.DefaultPrng.init(@intCast(rl.getRandomValue(0, std.math.maxInt(i32))));
+    sim.spawnNewcomers(world, demo, prng.random(), newcomer_count, newcomer_max_dist, newcomer_jitter);
 
     balls = try sim.ballQuery(world);
     defer ecs.query_fini(balls);
@@ -88,6 +100,7 @@ pub fn main() !void {
 }
 
 fn frame() callconv(.c) void {
+    const work_start = rl.getTime();
     // Fixed steps, never raylib's raw dt: a long frame would otherwise
     // throw the orbit off for good, and dt=0 (first frame) would make
     // flecs measure its own clock.
@@ -118,8 +131,18 @@ fn frame() callconv(.c) void {
         }
     }
 
+    // Work = sim steps + draw calls, up to here. It leaves out the present
+    // (buffer swap, vsync and setTargetFPS waits), which is idle time. On web
+    // performance.now() is coarsened (~0.1 ms), so read the mean, not one frame.
+    stats.add(rl.getFrameTime(), @floatCast(rl.getTime() - work_start));
     // Not rl.drawFPS: its lime/orange/red colours ignore the theme.
-    var fps_buf: [fps_buf_len]u8 = undefined;
-    const fps = std.fmt.bufPrintSentinel(&fps_buf, "{d} FPS", .{rl.getFPS()}, 0) catch unreachable;
-    rl.drawText(fps, fps_x, fps_y, fps_font_size, rl.getColor(sim.sand));
+    var buf: [stats_buf_len]u8 = undefined;
+    drawStat(std.fmt.bufPrintSentinel(&buf, "{d} FPS", .{rl.getFPS()}, 0) catch unreachable, 0);
+    drawStat(std.fmt.bufPrintSentinel(&buf, "work {d:.2}/{d:.2} ms", .{ stats.mean_ms, stats.max_ms }, 0) catch unreachable, 1);
+}
+
+/// One right-aligned readout line; `line` 0 is the top.
+fn drawStat(text: [:0]const u8, line: i32) void {
+    const x = width - stats_margin - rl.measureText(text, stats_font_size);
+    rl.drawText(text, x, stats_margin + line * (stats_font_size + stats_line_gap), stats_font_size, rl.getColor(sim.sand));
 }

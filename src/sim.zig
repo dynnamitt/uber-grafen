@@ -8,14 +8,20 @@ const ecs = @import("zflecs");
 pub const orange: u32 = 0xC87137FF;
 pub const teal: u32 = 0x2E7E7EFF;
 pub const sand: u32 = 0xC8A878FF;
+// Newcomers: slight shifts of sand (lighter, darker, warmer, cooler).
+const newcomer_colours = [_]u32{ 0xD4B486FF, 0xBC9C6CFF, 0xCEA46EFF, 0xC2AC82FF };
 
 // Newcomer path, as fractions of the orbit radius: it flies straight past the
 // attractor at `newcomer_offset` (the void between the two balls), and gravity
-// takes it once it is `newcomer_capture` past the attractor. `newcomer_speed`
-// is relative to orbital speed; with these the capture orbit stays on screen.
+// takes it once it is `newcomer_capture` (± jitter) past the attractor.
+// `newcomer_speed` (± jitter) is relative to orbital speed. Every corner of
+// these ranges keeps the captured orbit between ~43 and ~192 px at radius 150:
+// clear of the attractor and on screen.
 const newcomer_offset = 0.6;
-const newcomer_capture = 0.4;
+const newcomer_capture = 0.2;
+const newcomer_capture_jitter = 0.15;
 const newcomer_speed = 1.2;
+const newcomer_speed_jitter = 0.1;
 const newcomer_radius = 8;
 
 pub const Position = struct { x: f32, y: f32 };
@@ -127,6 +133,34 @@ pub const FixedClock = struct {
     }
 };
 
+/// How long `FrameStats` collects before it updates its readout.
+pub const stats_window: f32 = 0.5;
+
+/// Per-frame work time (seconds spent before presenting), summarised as mean
+/// and max over each `stats_window`. Per-frame numbers flicker too fast to read.
+pub const FrameStats = struct {
+    elapsed: f32 = 0,
+    sum: f32 = 0,
+    peak: f32 = 0,
+    n: u32 = 0,
+    /// Readout from the last complete window, in milliseconds.
+    mean_ms: f32 = 0,
+    max_ms: f32 = 0,
+
+    /// Records one frame.
+    /// @param {f32} frame_dt - the frame's interval in seconds; drives the window.
+    /// @param {f32} work - seconds of work in that frame.
+    pub fn add(self: *FrameStats, frame_dt: f32, work: f32) void {
+        self.elapsed += frame_dt;
+        self.sum += work;
+        self.peak = @max(self.peak, work);
+        self.n += 1;
+        if (self.elapsed < stats_window) return;
+        const n: f32 = @floatFromInt(self.n);
+        self.* = .{ .mean_ms = 1000 * self.sum / n, .max_ms = 1000 * self.peak };
+    }
+};
+
 /// `speed` is the orbiter's (circular) orbital speed.
 pub const Demo = struct { center: ecs.entity_t, orbiter: ecs.entity_t, radius: f32, speed: f32 };
 
@@ -152,24 +186,70 @@ pub fn spawnDemo(world: *ecs.world_t, cx: f32, cy: f32, radius: f32, period: f32
     return .{ .center = center, .orbiter = orbiter, .radius = radius, .speed = speed };
 }
 
-/// A third ball entering from `start_x` (left of the attractor) heading +x,
-/// aimed through the gap between the attractor and the orbit ring. Gravity
-/// catches it once it is past the attractor.
+/// How one newcomer enters.
+pub const Entry = struct {
+    /// Direction from the attractor to the entry point, radians.
+    angle: f32,
+    /// Entry distance from the attractor; pass one off screen.
+    dist: f32,
+    /// Pass through the void on its left (else its right).
+    left: bool,
+    /// Fraction of orbital speed.
+    speed: f32 = newcomer_speed,
+    /// How far past the attractor gravity takes it, as a fraction of the orbit radius.
+    capture: f32 = newcomer_capture,
+    rgba: u32 = newcomer_colours[0],
+};
+
+/// A ball entering at `entry`, flying straight back past the attractor
+/// through the void on one side of it (the gap between attractor and orbit
+/// ring). Gravity catches it once it is past the attractor.
 /// @param {*ecs.world_t} world - world with `register` already run.
 /// @param {Demo} demo - the demo it flies past, from `spawnDemo`.
-/// @param {f32} start_x - entry x; pass a value off the left edge.
+/// @param {Entry} entry - where, how fast, and when it is captured.
 /// @returns {ecs.entity_t} the new ball.
-pub fn spawnNewcomer(world: *ecs.world_t, demo: Demo, start_x: f32) ecs.entity_t {
+pub fn spawnNewcomer(world: *ecs.world_t, demo: Demo, entry: Entry) ecs.entity_t {
     const c = ecs.get(world, demo.center, Position).?;
-    const start: Position = .{ .x = start_x, .y = c.y - demo.radius * newcomer_offset };
+    const ux = @cos(entry.angle);
+    const uy = @sin(entry.angle);
+    // Shifted sideways along (-uy, ux), which is its left in y-down screen space.
+    const off = (if (entry.left) demo.radius else -demo.radius) * newcomer_offset;
+    const start: Position = .{ .x = c.x + ux * entry.dist - uy * off, .y = c.y + uy * entry.dist + ux * off };
+    const speed = entry.speed * demo.speed;
 
     const e = ecs.new_id(world);
     set(world, e, Position, start);
     set(world, e, PrevPosition, .{ .x = start.x, .y = start.y });
-    set(world, e, Velocity, .{ .x = newcomer_speed * demo.speed, .y = 0 });
-    set(world, e, Capture, .{ .center = demo.center, .after = demo.radius * newcomer_capture });
-    set(world, e, Ball, .{ .radius = newcomer_radius, .rgba = sand });
+    set(world, e, Velocity, .{ .x = -ux * speed, .y = -uy * speed });
+    set(world, e, Capture, .{ .center = demo.center, .after = demo.radius * entry.capture });
+    set(world, e, Ball, .{ .radius = newcomer_radius, .rgba = entry.rgba });
     return e;
+}
+
+/// `count` newcomers, each at a random angle, `max_dist - rand(0..jitter)` out,
+/// through a random void (left or right), with random speed, capture point
+/// (within the `newcomer_*_jitter` ranges) and colour.
+/// @param {*ecs.world_t} world - world with `register` already run.
+/// @param {Demo} demo - the demo they fly past.
+/// @param {std.Random} rand - source of every random choice.
+/// @param {usize} count - how many to spawn.
+/// @param {f32} max_dist - outer entry distance from the attractor.
+/// @param {f32} jitter - entry distances spread this far inward.
+pub fn spawnNewcomers(world: *ecs.world_t, demo: Demo, rand: std.Random, count: usize, max_dist: f32, jitter: f32) void {
+    for (0..count) |_| {
+        _ = spawnNewcomer(world, demo, .{
+            .angle = rand.float(f32) * std.math.tau,
+            .dist = max_dist - rand.float(f32) * jitter,
+            .left = rand.boolean(),
+            .speed = newcomer_speed + spread(rand) * newcomer_speed_jitter,
+            .capture = newcomer_capture + spread(rand) * newcomer_capture_jitter,
+            .rgba = newcomer_colours[rand.uintLessThan(usize, newcomer_colours.len)],
+        });
+    }
+}
+
+fn spread(rand: std.Random) f32 {
+    return rand.float(f32) * 2 - 1; // uniform in [-1, 1)
 }
 
 /// Query over every drawable entity: term 0 = `Position`, term 1 = `Ball`,
@@ -304,6 +384,18 @@ test "FixedClock: alpha is the leftover fraction of a step" {
     try expectApproxEqAbs(@as(f32, 0.25), clock.alpha(), 1e-4);
 }
 
+test "FrameStats: publishes mean and max once per window, then restarts" {
+    var s: FrameStats = .{};
+    s.add(0.2, 0.001);
+    s.add(0.2, 0.003);
+    try std.testing.expectEqual(0, s.mean_ms); // window not full yet
+    s.add(0.2, 0.002);
+    try std.testing.expectApproxEqAbs(2, s.mean_ms, 1e-4);
+    try std.testing.expectApproxEqAbs(3, s.max_ms, 1e-4);
+    s.add(0.5, 0.0005); // a fresh window: the old peak is gone
+    try std.testing.expectApproxEqAbs(0.5, s.max_ms, 1e-4);
+}
+
 test "snapshot keeps the position from before the step" {
     const world = ecs.init();
     defer _ = ecs.fini(world);
@@ -319,27 +411,66 @@ test "snapshot keeps the position from before the step" {
 }
 
 test "newcomer flies straight past the attractor, then stays captured" {
+    const c: Position = .{ .x = 400, .y = 225 };
+    const s0 = newcomer_speed - newcomer_speed_jitter;
+    const s1 = newcomer_speed + newcomer_speed_jitter;
+    const c0 = newcomer_capture - newcomer_capture_jitter;
+    const c1 = newcomer_capture + newcomer_capture_jitter;
+    // Every corner of the speed × capture ranges, from mixed angles and sides.
+    for ([_]Entry{
+        .{ .angle = std.math.pi, .dist = 500, .left = true, .speed = s0, .capture = c0 },
+        .{ .angle = 1, .dist = 500, .left = false, .speed = s0, .capture = c1 },
+        .{ .angle = 2, .dist = 500, .left = true, .speed = s1, .capture = c0 },
+        .{ .angle = 4, .dist = 500, .left = false, .speed = s1, .capture = c1 },
+    }) |entry| {
+        const world = ecs.init();
+        defer _ = ecs.fini(world);
+        register(world);
+        const d = spawnDemo(world, c.x, c.y, 150, 4);
+        const n = spawnNewcomer(world, d, entry);
+
+        var steps: usize = 0;
+        while (ecs.has_id(world, n, ecs.id(Capture))) : (steps += 1) {
+            try expect(steps < 600);
+            step(world, 1);
+            // Straight line: the attractor stays the void's width off its path.
+            const p = ecs.get(world, n, Position).?;
+            const v = ecs.get(world, n, Velocity).?;
+            const miss = ((p.x - c.x) * v.y - (p.y - c.y) * v.x) / std.math.hypot(v.x, v.y);
+            try expectApproxEqAbs(150 * newcomer_offset, @abs(miss), 0.01);
+        }
+        try expect(ecs.has_id(world, n, ecs.id(Orbits)));
+
+        for (0..20 * 240) |_| { // ~20 orbiter periods
+            step(world, 1);
+            const r = distance(c, ecs.get(world, n, Position).?.*);
+            try expect(r > 32 and r < 217); // clear of the attractor, inside the 450 px canvas
+        }
+    }
+}
+
+test "spawnNewcomers: all start within the entry ring" {
     const world = ecs.init();
     defer _ = ecs.fini(world);
     register(world);
-    const d = spawnDemo(world, 400, 225, 150, 4);
-    const n = spawnNewcomer(world, d, -8);
-    const c: Position = .{ .x = 400, .y = 225 };
+    const d = spawnDemo(world, 0, 0, 100, 2);
+    var prng = std.Random.DefaultPrng.init(42);
+    spawnNewcomers(world, d, prng.random(), 50, 600, 100);
 
-    var steps: usize = 0;
-    while (ecs.has_id(world, n, ecs.id(Capture))) : (steps += 1) {
-        try expect(steps < 600);
-        step(world, 1);
-        try std.testing.expectEqual(225 - 150 * newcomer_offset, ecs.get(world, n, Position).?.y);
+    const q = try ecs.query_init(world, &.{
+        .terms = [_]ecs.term_t{ .{ .id = ecs.id(Position) }, .{ .id = ecs.id(Capture) } } ++ ecs.array(ecs.term_t, ecs.FLECS_TERM_COUNT_MAX - 2),
+    });
+    defer ecs.query_fini(q);
+    var n: usize = 0;
+    var it = ecs.query_iter(world, q);
+    while (ecs.query_next(&it)) {
+        for (ecs.field(&it, Position, 0).?) |p| {
+            const r = distance(.{ .x = 0, .y = 0 }, p);
+            try expect(r >= 500 and r <= std.math.hypot(600, 100 * newcomer_offset));
+        }
+        n += it.count();
     }
-    try expect(ecs.get(world, n, Position).?.x >= 400 + 150 * newcomer_capture);
-    try expect(ecs.has_id(world, n, ecs.id(Orbits)));
-
-    for (0..20 * 240) |_| { // ~20 orbiter periods
-        step(world, 1);
-        const r = distance(c, ecs.get(world, n, Position).?.*);
-        try expect(r > 30 and r < 200);
-    }
+    try std.testing.expectEqual(@as(usize, 50), n);
 }
 
 test "ballQuery yields both demo balls" {
