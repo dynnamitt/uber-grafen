@@ -5,6 +5,9 @@ const ecs = @import("zflecs");
 
 pub const Position = struct { x: f32, y: f32 };
 pub const Velocity = struct { x: f32, y: f32 };
+/// `Position` at the start of the latest step, so rendering can interpolate
+/// between fixed steps. Only moving entities need it.
+pub const PrevPosition = struct { x: f32, y: f32 };
 /// Something to draw: a filled circle. `rgba` is 0xRRGGBBAA so this module
 /// stays free of raylib types.
 pub const Ball = struct { radius: f32, rgba: u32 };
@@ -26,13 +29,19 @@ fn set(world: *ecs.world_t, entity: ecs.entity_t, comptime T: type, val: T) void
 pub fn register(world: *ecs.world_t) void {
     ecs.COMPONENT(world, Position);
     ecs.COMPONENT(world, Velocity);
+    ecs.COMPONENT(world, PrevPosition);
     ecs.COMPONENT(world, Ball);
     ecs.COMPONENT(world, Attractor);
     ecs.COMPONENT(world, Orbits);
+    _ = ecs.ADD_SYSTEM(world, "snapshot", ecs.OnLoad, snapshot);
     // gravity (PreUpdate) updates velocity before move (OnUpdate) uses it:
     // semi-implicit Euler, which keeps a circular orbit from spiralling out.
     _ = ecs.ADD_SYSTEM(world, "gravity", ecs.PreUpdate, gravity);
     _ = ecs.ADD_SYSTEM(world, "move", ecs.OnUpdate, move);
+}
+
+fn snapshot(positions: []const Position, prevs: []PrevPosition) void {
+    for (positions, prevs) |p, *prev| prev.* = .{ .x = p.x, .y = p.y };
 }
 
 fn gravity(it: *ecs.iter_t, positions: []const Position, velocities: []Velocity, orbits: []const Orbits) void {
@@ -79,6 +88,13 @@ pub const FixedClock = struct {
         if (self.acc >= step_dt) self.acc = 0; // too far behind: drop it
         return n;
     }
+
+    /// How far the frame is past the latest step.
+    /// @returns {f32} 0..1, the weight rendering gives the current `Position`
+    /// over `PrevPosition`.
+    pub fn alpha(self: FixedClock) f32 {
+        return self.acc / step_dt;
+    }
 };
 
 pub const Demo = struct { center: ecs.entity_t, orbiter: ecs.entity_t, radius: f32 };
@@ -95,7 +111,9 @@ pub fn spawnDemo(world: *ecs.world_t, cx: f32, cy: f32, radius: f32, period: f32
     set(world, center, Ball, .{ .radius = 24, .rgba = 0xF5A623FF });
 
     const orbiter = ecs.new_id(world);
-    set(world, orbiter, Position, .{ .x = cx + radius, .y = cy });
+    const start: Position = .{ .x = cx + radius, .y = cy };
+    set(world, orbiter, Position, start);
+    set(world, orbiter, PrevPosition, .{ .x = start.x, .y = start.y });
     set(world, orbiter, Velocity, .{ .x = 0, .y = speed });
     set(world, orbiter, Orbits, .{ .center = center });
     set(world, orbiter, Ball, .{ .radius = 10, .rgba = 0x4A90E2FF });
@@ -103,14 +121,16 @@ pub fn spawnDemo(world: *ecs.world_t, cx: f32, cy: f32, radius: f32, period: f32
     return .{ .center = center, .orbiter = orbiter, .radius = radius };
 }
 
-/// Query over every drawable entity: term 0 = `Position`, term 1 = `Ball`.
+/// Query over every drawable entity: term 0 = `Position`, term 1 = `Ball`,
+/// term 2 = optional `PrevPosition` (null field for static entities).
 /// Caller owns it (`ecs.query_fini`).
 pub fn ballQuery(world: *ecs.world_t) !*ecs.query_t {
     return ecs.query_init(world, &.{
         .terms = [_]ecs.term_t{
             .{ .id = ecs.id(Position) },
             .{ .id = ecs.id(Ball) },
-        } ++ ecs.array(ecs.term_t, ecs.FLECS_TERM_COUNT_MAX - 2),
+            .{ .id = ecs.id(PrevPosition), .oper = .Optional },
+        } ++ ecs.array(ecs.term_t, ecs.FLECS_TERM_COUNT_MAX - 3),
     });
 }
 
@@ -227,6 +247,26 @@ test "orbit survives a 3 s frame stall" {
     }
 }
 
+test "FixedClock: alpha is the leftover fraction of a step" {
+    var clock: FixedClock = .{};
+    _ = clock.advance(step_dt * 1.25);
+    try expectApproxEqAbs(@as(f32, 0.25), clock.alpha(), 1e-4);
+}
+
+test "snapshot keeps the position from before the step" {
+    const world = ecs.init();
+    defer _ = ecs.fini(world);
+    register(world);
+    const d = spawnDemo(world, 0, 0, 100, 2);
+
+    step(world, 10);
+    const before = ecs.get(world, d.orbiter, Position).?.*;
+    step(world, 1);
+    const prev = ecs.get(world, d.orbiter, PrevPosition).?;
+    try std.testing.expectEqual(PrevPosition{ .x = before.x, .y = before.y }, prev.*);
+    try expect(distance(before, ecs.get(world, d.orbiter, Position).?.*) > 0);
+}
+
 test "ballQuery yields both demo balls" {
     const world = ecs.init();
     defer _ = ecs.fini(world);
@@ -236,7 +276,12 @@ test "ballQuery yields both demo balls" {
     const q = try ballQuery(world);
     defer ecs.query_fini(q);
     var n: usize = 0;
+    var with_prev: usize = 0; // only the orbiter has PrevPosition
     var it = ecs.query_iter(world, q);
-    while (ecs.query_next(&it)) n += it.count();
+    while (ecs.query_next(&it)) {
+        n += it.count();
+        if (ecs.field(&it, PrevPosition, 2) != null) with_prev += it.count();
+    }
     try std.testing.expectEqual(@as(usize, 2), n);
+    try std.testing.expectEqual(@as(usize, 1), with_prev);
 }
