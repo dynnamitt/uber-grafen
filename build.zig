@@ -19,15 +19,23 @@ pub fn build(b: *std.Build) !void {
     // so its sanitize checks keep guarding the tests.
     const raylib_optimize: std.builtin.OptimizeMode = if (optimize == .debug) .safe else optimize;
     const raylib_dep = b.dependency("raylib_zig", .{ .target = target, .optimize = raylib_optimize });
-    // Only the add-on sim.register needs: pipeline (it pulls in system). And
-    // sanitize only in Debug: zflecs' default keys off the build runner's mode,
-    // which is always Debug, so release builds got sanitize too.
+    // Flecs checks must match what flecs.h derives from NDEBUG (set only in
+    // ReleaseFast/Small), or zflecs' Zig structs disagree with C's. zflecs'
+    // default reads the build runner's mode (always Debug) instead of ours.
+    const flecs_checks: zflecs.debug_mode = switch (optimize) {
+        .debug => .sanitize,
+        .safe => .debug,
+        .fast, .small => .none,
+    };
+    // Add-ons: pipeline (pulls in system) plus the always-on os_api_impl. Log
+    // only where checks run: without it a failed assert aborts silently.
     const zflecs_dep = b.dependency("zflecs", .{
         .target = target,
         .optimize = optimize,
         .custom_build = .whitelist,
         .toggle_pipeline_addon = true,
-        .debug_mode = @as(zflecs.debug_mode, if (optimize == .debug) .sanitize else .none),
+        .toggle_log_addon = flecs_checks != .none,
+        .debug_mode = flecs_checks,
     });
     const flecs_lib = zflecs_dep.artifact("flecs");
 
