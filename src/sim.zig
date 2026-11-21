@@ -16,6 +16,7 @@ pub const sand: u32 = 0xC8A878FF;
 const newcomer_offset = 0.6;
 const newcomer_capture = 0.4;
 const newcomer_speed = 1.2;
+const newcomer_radius = 8;
 
 pub const Position = struct { x: f32, y: f32 };
 pub const Velocity = struct { x: f32, y: f32 };
@@ -153,7 +154,11 @@ pub fn spawnDemo(world: *ecs.world_t, cx: f32, cy: f32, radius: f32, period: f32
 
 /// A third ball entering from `start_x` (left of the attractor) heading +x,
 /// aimed through the gap between the attractor and the orbit ring. Gravity
-/// catches it once it is past the attractor. Returns the new entity.
+/// catches it once it is past the attractor.
+/// @param {*ecs.world_t} world - world with `register` already run.
+/// @param {Demo} demo - the demo it flies past, from `spawnDemo`.
+/// @param {f32} start_x - entry x; pass a value off the left edge.
+/// @returns {ecs.entity_t} the new ball.
 pub fn spawnNewcomer(world: *ecs.world_t, demo: Demo, start_x: f32) ecs.entity_t {
     const c = ecs.get(world, demo.center, Position).?;
     const start: Position = .{ .x = start_x, .y = c.y - demo.radius * newcomer_offset };
@@ -163,7 +168,7 @@ pub fn spawnNewcomer(world: *ecs.world_t, demo: Demo, start_x: f32) ecs.entity_t
     set(world, e, PrevPosition, .{ .x = start.x, .y = start.y });
     set(world, e, Velocity, .{ .x = newcomer_speed * demo.speed, .y = 0 });
     set(world, e, Capture, .{ .center = demo.center, .after = demo.radius * newcomer_capture });
-    set(world, e, Ball, .{ .radius = 8, .rgba = sand });
+    set(world, e, Ball, .{ .radius = newcomer_radius, .rgba = sand });
     return e;
 }
 
@@ -325,9 +330,9 @@ test "newcomer flies straight past the attractor, then stays captured" {
     while (ecs.has_id(world, n, ecs.id(Capture))) : (steps += 1) {
         try expect(steps < 600);
         step(world, 1);
-        try std.testing.expectEqual(@as(f32, 225 - 90), ecs.get(world, n, Position).?.y);
+        try std.testing.expectEqual(225 - 150 * newcomer_offset, ecs.get(world, n, Position).?.y);
     }
-    try expect(ecs.get(world, n, Position).?.x >= 400 + 60);
+    try expect(ecs.get(world, n, Position).?.x >= 400 + 150 * newcomer_capture);
     try expect(ecs.has_id(world, n, ecs.id(Orbits)));
 
     for (0..20 * 240) |_| { // ~20 orbiter periods

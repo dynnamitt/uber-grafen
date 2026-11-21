@@ -9,7 +9,13 @@ const height = 450;
 // Render-only colours (tech-trio.svg palette; ball colours are in sim.zig).
 const background = 0x0E1414FF; // near-black teal
 const orbit_guide = 0x1E5252FF; // deep teal
+
 const newcomer_start_x = -16; // just off the left edge
+// FPS counter: top-right, raylib's default font size. The buffer fits any i32.
+const fps_x = width - 96;
+const fps_y = 16;
+const fps_font_size = 20;
+const fps_buf_len = 32;
 // emscripten_set_main_loop args: fps 0 = requestAnimationFrame; nonzero
 // simulate_infinite_loop = never return from main.
 const web_loop_fps = 0;
@@ -113,7 +119,7 @@ fn frame() callconv(.c) void {
     }
 
     // Not rl.drawFPS: its lime/orange/red colours ignore the theme.
-    var fps_buf: [16]u8 = undefined;
+    var fps_buf: [fps_buf_len]u8 = undefined;
     const fps = std.fmt.bufPrintSentinel(&fps_buf, "{d} FPS", .{rl.getFPS()}, 0) catch unreachable;
-    rl.drawText(fps, width - 96, 16, 20, rl.getColor(sim.sand));
+    rl.drawText(fps, fps_x, fps_y, fps_font_size, rl.getColor(sim.sand));
 }

@@ -22,4 +22,4 @@ zig fetch --save git+https://github.com/raylib-zig/raylib-zig#<commit>
 zig fetch --save git+https://github.com/zig-gamedev/zflecs#<commit>
 ```
 
-Live demo (once Pages is enabled: Settings → Pages → Source: GitHub Actions): https://dynnamitt.github.io/uber-grafen/
+Live demo, redeployed from `main` on every push: https://dynnamitt.github.io/uber-grafen/
