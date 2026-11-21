@@ -1,0 +1,26 @@
+{
+  "version": 2,
+  "skills": {
+    "zig-0-17": {
+      "source": "zigcc/skills",
+      "commit": "2f9bf9d609be85bb2d171e6977a3bbad0badb83c",
+      "sourceType": "github",
+      "skillPath": "zig-0-17/SKILL.md",
+      "computedHash": "15227d1274aabf09bc897d653d8cb7e3ba0ff5ef142efdde606f50a8cac0c5bd"
+    },
+    "zig-best-practices": {
+      "source": "alleneubank/claude-code",
+      "commit": "2921eb8a685a2589c4c3e6ecbc8eaa12ffadde73",
+      "sourceType": "github",
+      "skillPath": ".claude/skills/zig-best-practices/SKILL.md",
+      "computedHash": "3951311c090064401c3bac00d1d06c15bc6d56e8c34c37d6b785aeb162d66574"
+    },
+    "zig-cinterop": {
+      "source": "mohitmishra786/low-level-dev-skills",
+      "commit": "18f29518a47fda070e6ec1268cb577692fae9a10",
+      "sourceType": "github",
+      "skillPath": "skills/zig/zig-cinterop/SKILL.md",
+      "computedHash": "8d727ca5110152e34a24f55a21880e272c8ddf669dbfb0279a0d3fa3436d240b"
+    }
+  }
+}
