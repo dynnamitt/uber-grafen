@@ -10,14 +10,18 @@ const height = 450;
 const background = 0x0E1414FF; // near-black teal
 const orbit_guide = 0x1E5252FF; // deep teal
 
+const orbit_radius = 150;
+const orbit_period = 4; // seconds
 // Newcomers: `newcomer_count` balls enter from random angles, between
 // `newcomer_max_dist - newcomer_jitter` and `newcomer_max_dist` from the
-// attractor, all beyond the corners of the canvas (+ ball-size margin).
+// attractor, all beyond the corners of the canvas.
 const newcomer_count = 1000;
 const newcomer_max_dist = 600;
 const newcomer_jitter = 100;
 comptime {
-    std.debug.assert(newcomer_max_dist - newcomer_jitter > @sqrt(@as(f32, width * width + height * height)) / 2 + 16);
+    std.debug.assert(newcomer_max_dist - newcomer_jitter > std.math.hypot(@as(f32, width), height) / 2 + sim.newcomer_radius);
+    // Captured newcomers stay on the canvas.
+    std.debug.assert(orbit_radius * sim.newcomer_orbit_max + sim.newcomer_radius < height / 2);
 }
 // Perf readout: top-right, right-aligned, raylib's default font size.
 // The buffer fits any i32 FPS and any f32 ms pair.
@@ -80,7 +84,7 @@ pub fn main() !void {
     world = ecs.init();
     defer _ = ecs.fini(world);
     sim.register(world);
-    demo = sim.spawnDemo(world, width / 2, height / 2, 150, 4);
+    demo = sim.spawnDemo(world, width / 2, height / 2, orbit_radius, orbit_period);
     // raylib seeds its RNG from the clock in initWindow.
     var prng = std.Random.DefaultPrng.init(@intCast(rl.getRandomValue(0, std.math.maxInt(i32))));
     sim.spawnNewcomers(world, demo, prng.random(), newcomer_count, newcomer_max_dist, newcomer_jitter);
@@ -131,15 +135,20 @@ fn frame() callconv(.c) void {
         }
     }
 
-    // Work = sim steps + draw calls, up to here. It leaves out the present
-    // (buffer swap, vsync and setTargetFPS waits), which is idle time. On web
-    // performance.now() is coarsened (~0.1 ms), so read the mean, not one frame.
+    // Work = sim steps + draw calls, up to here. Flush raylib's last draw
+    // batch first so it counts; the present (buffer swap, vsync and
+    // setTargetFPS waits) is idle time and stays out. On web performance.now()
+    // is coarsened (~0.1 ms), so read the mean, not one frame.
+    rlDrawRenderBatchActive();
     stats.add(rl.getFrameTime(), @floatCast(rl.getTime() - work_start));
     // Not rl.drawFPS: its lime/orange/red colours ignore the theme.
     var buf: [stats_buf_len]u8 = undefined;
     drawStat(std.fmt.bufPrintSentinel(&buf, "{d} FPS", .{rl.getFPS()}, 0) catch unreachable, 0);
     drawStat(std.fmt.bufPrintSentinel(&buf, "work {d:.2}/{d:.2} ms", .{ stats.mean_ms, stats.max_ms }, 0) catch unreachable, 1);
 }
+
+// rlgl, part of the raylib library; raylib-zig doesn't export it as a module.
+extern fn rlDrawRenderBatchActive() void;
 
 /// One right-aligned readout line; `line` 0 is the top.
 fn drawStat(text: [:0]const u8, line: i32) void {

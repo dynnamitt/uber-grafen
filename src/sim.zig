@@ -15,14 +15,19 @@ const newcomer_colours = [_]u32{ 0xD4B486FF, 0xBC9C6CFF, 0xCEA46EFF, 0xC2AC82FF 
 // attractor at `newcomer_offset` (the void between the two balls), and gravity
 // takes it once it is `newcomer_capture` (± jitter) past the attractor.
 // `newcomer_speed` (± jitter) is relative to orbital speed. Every corner of
-// these ranges keeps the captured orbit between ~43 and ~192 px at radius 150:
-// clear of the attractor and on screen.
+// these ranges keeps the captured orbit within ~0.29–1.28 orbit radii, so
+// `newcomer_orbit_max` bounds it (with room for integration wobble).
 const newcomer_offset = 0.6;
 const newcomer_capture = 0.2;
 const newcomer_capture_jitter = 0.15;
 const newcomer_speed = 1.2;
 const newcomer_speed_jitter = 0.1;
-const newcomer_radius = 8;
+/// Farthest a captured newcomer gets from the attractor, in orbit radii.
+pub const newcomer_orbit_max = 1.35;
+pub const newcomer_radius = 8;
+
+/// How long `FrameStats` collects (seconds) before it updates its readout.
+const stats_window = 0.5;
 
 pub const Position = struct { x: f32, y: f32 };
 pub const Velocity = struct { x: f32, y: f32 };
@@ -133,9 +138,6 @@ pub const FixedClock = struct {
     }
 };
 
-/// How long `FrameStats` collects before it updates its readout.
-pub const stats_window: f32 = 0.5;
-
 /// Per-frame work time (seconds spent before presenting), summarised as mean
 /// and max over each `stats_window`. Per-frame numbers flicker too fast to read.
 pub const FrameStats = struct {
@@ -195,9 +197,9 @@ pub const Entry = struct {
     /// Pass through the void on its left (else its right).
     left: bool,
     /// Fraction of orbital speed.
-    speed: f32 = newcomer_speed,
+    speed: f32,
     /// How far past the attractor gravity takes it, as a fraction of the orbit radius.
-    capture: f32 = newcomer_capture,
+    capture: f32,
     rgba: u32 = newcomer_colours[0],
 };
 
@@ -437,14 +439,15 @@ test "newcomer flies straight past the attractor, then stays captured" {
             const p = ecs.get(world, n, Position).?;
             const v = ecs.get(world, n, Velocity).?;
             const miss = ((p.x - c.x) * v.y - (p.y - c.y) * v.x) / std.math.hypot(v.x, v.y);
-            try expectApproxEqAbs(150 * newcomer_offset, @abs(miss), 0.01);
+            try expectApproxEqAbs(d.radius * newcomer_offset, @abs(miss), 0.01);
         }
         try expect(ecs.has_id(world, n, ecs.id(Orbits)));
 
         for (0..20 * 240) |_| { // ~20 orbiter periods
             step(world, 1);
             const r = distance(c, ecs.get(world, n, Position).?.*);
-            try expect(r > 32 and r < 217); // clear of the attractor, inside the 450 px canvas
+            // Clear of the attractor (radius 24) and within the bound main checks against the canvas.
+            try expect(r > 24 + newcomer_radius and r < newcomer_orbit_max * d.radius);
         }
     }
 }
