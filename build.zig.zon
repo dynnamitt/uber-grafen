@@ -1,7 +1,7 @@
 .{
-    .name = .uber_grafen,
+    .name = .zig_rayflecs,
     .version = "0.1.0",
-    .fingerprint = 0xf75f284c11203be4,
+    .fingerprint = 0x413ac02395b7373c,
     .minimum_zig_version = "0.17.0",
     .dependencies = .{
         .raylib_zig = .{
