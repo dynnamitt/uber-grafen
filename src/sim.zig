@@ -110,8 +110,9 @@ pub fn spawnDemo(world: *ecs.world_t, cx: f32, cy: f32, radius: f32, period: f32
     set(world, center, Ball, .{ .radius = 24, .rgba = 0xF5A623FF });
 
     const orbiter = ecs.new_id(world);
-    set(world, orbiter, Position, .{ .x = cx + radius, .y = cy });
-    set(world, orbiter, PrevPosition, .{ .x = cx + radius, .y = cy });
+    const start: Position = .{ .x = cx + radius, .y = cy };
+    set(world, orbiter, Position, start);
+    set(world, orbiter, PrevPosition, .{ .x = start.x, .y = start.y });
     set(world, orbiter, Velocity, .{ .x = 0, .y = speed });
     set(world, orbiter, Orbits, .{ .center = center });
     set(world, orbiter, Ball, .{ .radius = 10, .rgba = 0x4A90E2FF });

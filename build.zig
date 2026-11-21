@@ -11,10 +11,10 @@ pub fn build(b: *std.Build) !void {
     const optimize = b.standardOptimizeOption(.{});
     const is_web = target.result.os.tag == .emscripten;
 
-    // Debug builds still get an optimised raylib: its C code isn't what we
-    // debug, and unoptimised it costs frame time. zflecs stays at `optimize`
+    // Debug builds still get an optimised raylib (ReleaseSafe keeps its UB
+    // checks): its C code isn't what we debug, and unoptimised it costs frame time. zflecs stays at `optimize`
     // so its sanitize checks keep guarding the tests.
-    const raylib_optimize: std.builtin.OptimizeMode = if (optimize == .debug) .fast else optimize;
+    const raylib_optimize: std.builtin.OptimizeMode = if (optimize == .debug) .safe else optimize;
     const raylib_dep = b.dependency("raylib_zig", .{ .target = target, .optimize = raylib_optimize });
     const zflecs_dep = b.dependency("zflecs", .{ .target = target, .optimize = optimize });
     const flecs_lib = zflecs_dep.artifact("flecs");

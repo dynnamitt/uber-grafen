@@ -42,11 +42,6 @@ const EmscriptenPages = struct {
     }
 };
 
-// raylib's own frame pacing on web (WindowShouldClose's emscripten_sleep,
-// SetTargetFPS's WaitTime) isn't synced to vsync and needs Asyncify, so the
-// browser drives frame() through requestAnimationFrame instead.
-extern "c" fn emscripten_set_main_loop(func: *const fn () callconv(.c) void, fps: c_int, simulate_infinite_loop: bool) void;
-
 /// Globals, not locals in main: on web, emscripten_set_main_loop unwinds
 /// main's stack and calls frame() later.
 var world: *ecs.world_t = undefined;
@@ -67,8 +62,10 @@ pub fn main() !void {
     defer ecs.query_fini(balls);
 
     if (builtin.os.tag == .emscripten) {
-        // fps 0 = requestAnimationFrame. Never returns, so the defers above don't run.
-        emscripten_set_main_loop(frame, 0, true);
+        // raylib's web pacing (WindowShouldClose's emscripten_sleep, SetTargetFPS's
+        // WaitTime) isn't vsync-aligned and needs Asyncify; fps 0 = requestAnimationFrame.
+        // Never returns, so the defers above don't run.
+        std.os.emscripten.emscripten_set_main_loop(frame, 0, 1);
     } else {
         rl.setTargetFPS(60);
         while (!rl.windowShouldClose()) frame();
