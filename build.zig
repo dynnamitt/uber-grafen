@@ -39,9 +39,10 @@ pub fn build(b: *std.Build) !void {
     exe_mod.linkLibrary(raylib_dep.artifact("raylib"));
     exe_mod.addImport("zflecs", zflecs_dep.module("root"));
     exe_mod.addImport("sim", sim_mod);
-    // Load test: zig build run -Dnewcomers=10000
+    // Load test: zig build run -Dnewcomers=100000 -Dthreads=8
     const config = b.addOptions();
     config.addOption(u32, "newcomers", b.option(u32, "newcomers", "Newcomer balls to spawn") orelse default_newcomers);
+    config.addOption(u32, "threads", b.option(u32, "threads", "Flecs worker threads (native only)") orelse 0);
     exe_mod.addOptions("config", config);
 
     const run_step = b.step("run", "Build and launch the app (web: serve it with emrun)");

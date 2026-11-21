@@ -84,6 +84,9 @@ pub fn main() !void {
     world = ecs.init();
     defer _ = ecs.fini(world);
     sim.register(world);
+    // Opt-in: workers only pay off far past the default ball count, and web
+    // stays single-threaded (wasm threads need COOP/COEP; Pages can't send them).
+    if (builtin.os.tag != .emscripten and config.threads > 0) ecs.set_threads(world, @intCast(config.threads));
     demo = sim.spawnDemo(world, width / 2, height / 2, orbit_radius, orbit_period);
     // raylib seeds its RNG from the clock in initWindow.
     // max - 1: raylib computes max - min + 1, which overflows (a UBSan trap) at maxInt.

@@ -40,11 +40,16 @@ pub const PrevPosition = struct { x: f32, y: f32 };
 pub const Ball = struct { radius: f32, rgba: u32 };
 /// Pulls `Orbits` entities toward it with acceleration `mu / r²`.
 pub const Attractor = struct { mu: f32 };
-/// Accelerates toward `center`, which must have `Position` + `Attractor`.
-pub const Orbits = struct { center: ecs.entity_t };
-/// Flies straight until it is `after` past `center` along its velocity, then
-/// trades this for `Orbits` on the same center.
-pub const Capture = struct { center: ecs.entity_t, after: f32 };
+/// Relationship `(Orbits, center)`: accelerates toward `center`, which must
+/// have `Position` + `Attractor`. As a pair, every orbiter of one center
+/// shares a table, so systems read the center once per table, not per entity.
+pub const Orbits = struct {};
+/// Relationship `(Capture, center)`: flies straight until it is `after` past
+/// `center` along its velocity, then trades this for `(Orbits, center)`.
+pub const Capture = struct { after: f32 };
+
+// Query variable for the center of `(Orbits, $center)` / `(Capture, $center)`.
+const center_var = "$center";
 
 // zflecs declares ecs_set_id as returning entity_t, but flecs 4.1 returns void.
 // Native ABIs ignore the bogus return value; on wasm, wasm-ld replaces the call
@@ -55,6 +60,21 @@ fn set(world: *ecs.world_t, entity: ecs.entity_t, comptime T: type, val: T) void
     ecs_set_id(world, entity, ecs.id(T), @sizeOf(T), &val);
 }
 
+/// `set` for the pair `(T, target)`, with `T`'s data.
+fn setPair(world: *ecs.world_t, entity: ecs.entity_t, comptime T: type, target: ecs.entity_t, val: T) void {
+    ecs_set_id(world, entity, ecs.pair(ecs.id(T), target), @sizeOf(T), &val);
+}
+
+/// Terms matching `(rel, $center)` with the center's `Position`, plus
+/// `Attractor` when `with_attractor`; appended after a system's own terms.
+fn centerTerms(comptime rel: type, comptime with_attractor: bool) [if (with_attractor) 3 else 2]ecs.term_t {
+    const head = [_]ecs.term_t{
+        .{ .first = .{ .id = ecs.id(rel) }, .second = .{ .name = center_var }, .inout = .In },
+        .{ .id = ecs.id(Position), .src = .{ .name = center_var }, .inout = .In },
+    };
+    return if (with_attractor) head ++ [_]ecs.term_t{.{ .id = ecs.id(Attractor), .src = .{ .name = center_var }, .inout = .In }} else head;
+}
+
 /// Registers components and systems on `world`.
 pub fn register(world: *ecs.world_t) void {
     ecs.COMPONENT(world, Position);
@@ -62,25 +82,34 @@ pub fn register(world: *ecs.world_t) void {
     ecs.COMPONENT(world, PrevPosition);
     ecs.COMPONENT(world, Ball);
     ecs.COMPONENT(world, Attractor);
-    ecs.COMPONENT(world, Orbits);
+    ecs.TAG(world, Orbits);
     ecs.COMPONENT(world, Capture);
-    _ = ecs.ADD_SYSTEM(world, "snapshot", ecs.OnLoad, snapshot);
+    addSystem(world, "snapshot", ecs.OnLoad, snapshot, &.{});
     // gravity (PreUpdate) updates velocity before move (OnUpdate) uses it:
     // semi-implicit Euler, which keeps a circular orbit from spiralling out.
-    _ = ecs.ADD_SYSTEM(world, "gravity", ecs.PreUpdate, gravity);
-    _ = ecs.ADD_SYSTEM(world, "move", ecs.OnUpdate, move);
-    _ = ecs.ADD_SYSTEM(world, "capture", ecs.PostUpdate, capture);
+    addSystem(world, "gravity", ecs.PreUpdate, gravity, &centerTerms(Orbits, true));
+    addSystem(world, "move", ecs.OnUpdate, move, &.{});
+    addSystem(world, "capture", ecs.PostUpdate, capture, &centerTerms(Capture, false));
+}
+
+/// Every system may split across `ecs.set_threads` workers (none by default).
+fn addSystem(world: *ecs.world_t, name: [*:0]const u8, phase: ecs.entity_t, comptime f: anytype, filters: []const ecs.term_t) void {
+    var desc = ecs.SYSTEM_DESC_WITH_FILTERS(f, filters);
+    desc.phase = phase;
+    desc.multi_threaded = true;
+    _ = ecs.SYSTEM(world, name, &desc);
 }
 
 fn snapshot(positions: []const Position, prevs: []PrevPosition) void {
     for (positions, prevs) |p, *prev| prev.* = .{ .x = p.x, .y = p.y };
 }
 
-fn gravity(it: *ecs.iter_t, positions: []const Position, velocities: []Velocity, orbits: []const Orbits) void {
+// Fields 2.. come from `centerTerms`: the center's are shared, so read [0].
+fn gravity(it: *ecs.iter_t, positions: []const Position, velocities: []Velocity) void {
     const dt = it.delta_time;
-    for (positions, velocities, orbits) |p, *v, o| {
-        const c = ecs.get(it.world, o.center, Position) orelse continue;
-        const a = ecs.get(it.world, o.center, Attractor) orelse continue;
+    const c = ecs.field(it, Position, 3).?[0];
+    const a = ecs.field(it, Attractor, 4).?[0];
+    for (positions, velocities) |p, *v| {
         const dx = c.x - p.x;
         const dy = c.y - p.y;
         const r2 = dx * dx + dy * dy;
@@ -100,13 +129,15 @@ fn move(it: *ecs.iter_t, positions: []Position, velocities: []const Velocity) vo
     }
 }
 
-fn capture(it: *ecs.iter_t, positions: []const Position, velocities: []const Velocity, captures: []const Capture) void {
+fn capture(it: *ecs.iter_t, positions: []const Position, velocities: []const Velocity) void {
+    const captures = ecs.field(it, Capture, 2).?;
+    const center = ecs.field_src(it, 3);
+    const c = ecs.field(it, Position, 3).?[0];
     for (it.entities(), positions, velocities, captures) |e, p, v, cap| {
-        const c = ecs.get(it.world, cap.center, Position) orelse continue;
         // Distance past center along v, scaled by |v| on both sides.
         if ((p.x - c.x) * v.x + (p.y - c.y) * v.y < cap.after * std.math.hypot(v.x, v.y)) continue;
-        set(it.world, e, Orbits, .{ .center = cap.center });
-        ecs.remove(it.world, e, Capture);
+        ecs.add_pair(it.world, e, ecs.id(Orbits), center);
+        ecs.remove_pair(it.world, e, ecs.id(Capture), center);
     }
 }
 
@@ -183,7 +214,7 @@ pub fn spawnDemo(world: *ecs.world_t, cx: f32, cy: f32, radius: f32, period: f32
     set(world, orbiter, Position, start);
     set(world, orbiter, PrevPosition, .{ .x = start.x, .y = start.y });
     set(world, orbiter, Velocity, .{ .x = 0, .y = speed });
-    set(world, orbiter, Orbits, .{ .center = center });
+    ecs.add_pair(world, orbiter, ecs.id(Orbits), center);
     set(world, orbiter, Ball, .{ .radius = 10, .rgba = teal });
 
     return .{ .center = center, .orbiter = orbiter, .radius = radius, .speed = speed };
@@ -224,7 +255,7 @@ pub fn spawnNewcomer(world: *ecs.world_t, demo: Demo, entry: Entry) ecs.entity_t
     set(world, e, Position, start);
     set(world, e, PrevPosition, .{ .x = start.x, .y = start.y });
     set(world, e, Velocity, .{ .x = -ux * speed, .y = -uy * speed });
-    set(world, e, Capture, .{ .center = demo.center, .after = demo.radius * entry.capture });
+    setPair(world, e, Capture, demo.center, .{ .after = demo.radius * entry.capture });
     set(world, e, Ball, .{ .radius = newcomer_radius, .rgba = entry.rgba });
     return e;
 }
@@ -433,7 +464,7 @@ test "newcomer flies straight past the attractor, then stays captured" {
         const n = spawnNewcomer(world, d, entry);
 
         var steps: usize = 0;
-        while (ecs.has_id(world, n, ecs.id(Capture))) : (steps += 1) {
+        while (ecs.has_pair(world, n, ecs.id(Capture), d.center)) : (steps += 1) {
             try expect(steps < 600);
             step(world, 1);
             // Straight line: the attractor stays the void's width off its path.
@@ -442,7 +473,7 @@ test "newcomer flies straight past the attractor, then stays captured" {
             const miss = ((p.x - c.x) * v.y - (p.y - c.y) * v.x) / std.math.hypot(v.x, v.y);
             try expectApproxEqAbs(d.radius * newcomer_offset, @abs(miss), 0.1);
         }
-        try expect(ecs.has_id(world, n, ecs.id(Orbits)));
+        try expect(ecs.has_pair(world, n, ecs.id(Orbits), d.center));
         // Captured on the first step at or past `capture` radii beyond the attractor.
         const p = ecs.get(world, n, Position).?;
         const v = ecs.get(world, n, Velocity).?;
@@ -468,7 +499,7 @@ test "spawnNewcomers: all start within the entry ring" {
     spawnNewcomers(world, d, prng.random(), 50, 600, 100);
 
     const q = try ecs.query_init(world, &.{
-        .terms = [_]ecs.term_t{ .{ .id = ecs.id(Position) }, .{ .id = ecs.id(Capture) } } ++ ecs.array(ecs.term_t, ecs.FLECS_TERM_COUNT_MAX - 2),
+        .terms = [_]ecs.term_t{ .{ .id = ecs.id(Position) }, .{ .id = ecs.pair(ecs.id(Capture), ecs.Wildcard) } } ++ ecs.array(ecs.term_t, ecs.FLECS_TERM_COUNT_MAX - 2),
     });
     defer ecs.query_fini(q);
     var n: usize = 0;
@@ -500,4 +531,33 @@ test "ballQuery yields both demo balls" {
     }
     try std.testing.expectEqual(@as(usize, 2), n);
     try std.testing.expectEqual(@as(usize, 1), with_prev);
+}
+
+test "worker threads give the same result as one thread" {
+    var runs: [2][]Position = undefined;
+    for ([_]i32{ 0, 4 }, &runs) |threads, *out| {
+        const world = ecs.init();
+        defer _ = ecs.fini(world);
+        register(world);
+        if (threads > 0) ecs.set_threads(world, threads);
+        const d = spawnDemo(world, 0, 0, 150, 4);
+        var prng = std.Random.DefaultPrng.init(7);
+        spawnNewcomers(world, d, prng.random(), 200, 600, 100);
+        step(world, 600); // past every capture
+
+        out.* = try std.testing.allocator.alloc(Position, 202);
+        const q = try ballQuery(world);
+        defer ecs.query_fini(q);
+        var n: usize = 0;
+        var it = ecs.query_iter(world, q);
+        while (ecs.query_next(&it)) {
+            // Fresh world, no deletes: the 202 balls have consecutive ids from the center.
+            for (it.entities(), ecs.field(&it, Position, 0).?) |e, p| out.*[@intCast(e - d.center)] = p;
+            n += it.count();
+        }
+        try std.testing.expectEqual(@as(usize, 202), n);
+        try std.testing.expectEqual(0, ecs.count_id(world, ecs.pair(ecs.id(Capture), ecs.Wildcard)));
+    }
+    defer for (runs) |r| std.testing.allocator.free(r);
+    try std.testing.expectEqualSlices(Position, runs[0], runs[1]);
 }
