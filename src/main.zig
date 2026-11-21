@@ -110,5 +110,8 @@ fn frame() callconv(.c) void {
         }
     }
 
-    rl.drawFPS(width - 96, 16);
+    // Not rl.drawFPS: its lime/orange/red colours ignore the theme.
+    var fps_buf: [16]u8 = undefined;
+    const fps = std.fmt.bufPrintSentinel(&fps_buf, "{d} FPS", .{rl.getFPS()}, 0) catch unreachable;
+    rl.drawText(fps, width - 96, 16, 20, rl.getColor(sim.sand));
 }
