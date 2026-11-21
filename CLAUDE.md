@@ -34,6 +34,8 @@ CI (`.github/workflows/ci.yml`) runs on pull requests (and manually via workflow
 
 Pinned by commit + content hash in `build.zig.zon`: `raylib_zig` (raylib-zig org — moved from Not-Nik/raylib-zig) and `zflecs` (zig-gamedev, bundles flecs v4.1.x). Update with `zig fetch --save git+https://github.com/<repo>#<commit>`. Zig 0.17 unpacks packages into a **project-local `zig-pkg/`** directory (gitignored), not only the global cache.
 
+zflecs is built with `custom_build = .whitelist` and only the system and pipeline add-ons (`build.zig`). Using another add-on's API (timers, meta/reflection, JSON, REST, …) fails to link until you add its `toggle_<name>_addon = true`.
+
 Transitive deps: raylib-zig → raylib, raygui, emsdk; zflecs → translate-c → arocc (both on **codeberg.org**). Fetching needs github.com and codeberg.org.
 
 ## Architecture

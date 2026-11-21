@@ -18,7 +18,15 @@ pub fn build(b: *std.Build) !void {
     // so its sanitize checks keep guarding the tests.
     const raylib_optimize: std.builtin.OptimizeMode = if (optimize == .debug) .safe else optimize;
     const raylib_dep = b.dependency("raylib_zig", .{ .target = target, .optimize = raylib_optimize });
-    const zflecs_dep = b.dependency("zflecs", .{ .target = target, .optimize = optimize });
+    // Only the Flecs add-ons sim.register uses (system, pipeline; os_api_impl is
+    // always on). Dropping REST, script, stats, … cuts the wasm by ~45%.
+    const zflecs_dep = b.dependency("zflecs", .{
+        .target = target,
+        .optimize = optimize,
+        .custom_build = .whitelist,
+        .toggle_system_addon = true,
+        .toggle_pipeline_addon = true,
+    });
     const flecs_lib = zflecs_dep.artifact("flecs");
 
     // ECS-only code (components + systems). No raylib here, so it tests headless.
