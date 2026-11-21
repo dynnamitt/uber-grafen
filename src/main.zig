@@ -6,6 +6,16 @@ const sim = @import("sim");
 
 const width = 800;
 const height = 450;
+// Render-only colours (tech-trio.svg palette; ball colours are in sim.zig).
+const background = 0x0E1414FF; // near-black teal
+const orbit_guide = 0x1E5252FF; // deep teal
+
+const newcomer_start_x = -16; // just off the left edge
+// FPS counter: top-right, raylib's default font size. The buffer fits any i32.
+const fps_x = width - 96;
+const fps_y = 16;
+const fps_font_size = 20;
+const fps_buf_len = 32;
 // emscripten_set_main_loop args: fps 0 = requestAnimationFrame; nonzero
 // simulate_infinite_loop = never return from main.
 const web_loop_fps = 0;
@@ -61,6 +71,7 @@ pub fn main() !void {
     defer _ = ecs.fini(world);
     sim.register(world);
     demo = sim.spawnDemo(world, width / 2, height / 2, 150, 4);
+    _ = sim.spawnNewcomer(world, demo, newcomer_start_x);
 
     balls = try sim.ballQuery(world);
     defer ecs.query_fini(balls);
@@ -85,11 +96,11 @@ fn frame() callconv(.c) void {
 
     rl.beginDrawing();
     defer rl.endDrawing();
-    rl.clearBackground(rl.getColor(0x14161AFF));
+    rl.clearBackground(rl.getColor(background));
 
     // Orbit guide, then every Position + Ball entity.
     const c = ecs.get(world, demo.center, sim.Position).?;
-    rl.drawCircleLinesV(.{ .x = c.x, .y = c.y }, demo.radius, rl.getColor(0x2E3440FF));
+    rl.drawCircleLinesV(.{ .x = c.x, .y = c.y }, demo.radius, rl.getColor(orbit_guide));
 
     var it = ecs.query_iter(world, balls);
     while (ecs.query_next(&it)) {
@@ -107,6 +118,8 @@ fn frame() callconv(.c) void {
         }
     }
 
-    rl.drawText("uber-graphen: raylib + flecs", 16, 16, 20, rl.getColor(0x8892A0FF));
-    rl.drawFPS(width - 96, 16);
+    // Not rl.drawFPS: its lime/orange/red colours ignore the theme.
+    var fps_buf: [fps_buf_len]u8 = undefined;
+    const fps = std.fmt.bufPrintSentinel(&fps_buf, "{d} FPS", .{rl.getFPS()}, 0) catch unreachable;
+    rl.drawText(fps, fps_x, fps_y, fps_font_size, rl.getColor(sim.sand));
 }

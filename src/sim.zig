@@ -3,6 +3,21 @@
 const std = @import("std");
 const ecs = @import("zflecs");
 
+// Ball colours from the tech-trio.svg palette (0xRRGGBBAA); render-only
+// colours live in main.zig and web/shell.html.
+pub const orange: u32 = 0xC87137FF;
+pub const teal: u32 = 0x2E7E7EFF;
+pub const sand: u32 = 0xC8A878FF;
+
+// Newcomer path, as fractions of the orbit radius: it flies straight past the
+// attractor at `newcomer_offset` (the void between the two balls), and gravity
+// takes it once it is `newcomer_capture` past the attractor. `newcomer_speed`
+// is relative to orbital speed; with these the capture orbit stays on screen.
+const newcomer_offset = 0.6;
+const newcomer_capture = 0.4;
+const newcomer_speed = 1.2;
+const newcomer_radius = 8;
+
 pub const Position = struct { x: f32, y: f32 };
 pub const Velocity = struct { x: f32, y: f32 };
 /// `Position` at the start of the latest step, so rendering can interpolate
@@ -15,6 +30,9 @@ pub const Ball = struct { radius: f32, rgba: u32 };
 pub const Attractor = struct { mu: f32 };
 /// Accelerates toward `center`, which must have `Position` + `Attractor`.
 pub const Orbits = struct { center: ecs.entity_t };
+/// Flies straight until it is `after` past `center` along its velocity, then
+/// trades this for `Orbits` on the same center.
+pub const Capture = struct { center: ecs.entity_t, after: f32 };
 
 // zflecs declares ecs_set_id as returning entity_t, but flecs 4.1 returns void.
 // Native ABIs ignore the bogus return value; on wasm, wasm-ld replaces the call
@@ -33,11 +51,13 @@ pub fn register(world: *ecs.world_t) void {
     ecs.COMPONENT(world, Ball);
     ecs.COMPONENT(world, Attractor);
     ecs.COMPONENT(world, Orbits);
+    ecs.COMPONENT(world, Capture);
     _ = ecs.ADD_SYSTEM(world, "snapshot", ecs.OnLoad, snapshot);
     // gravity (PreUpdate) updates velocity before move (OnUpdate) uses it:
     // semi-implicit Euler, which keeps a circular orbit from spiralling out.
     _ = ecs.ADD_SYSTEM(world, "gravity", ecs.PreUpdate, gravity);
     _ = ecs.ADD_SYSTEM(world, "move", ecs.OnUpdate, move);
+    _ = ecs.ADD_SYSTEM(world, "capture", ecs.PostUpdate, capture);
 }
 
 fn snapshot(positions: []const Position, prevs: []PrevPosition) void {
@@ -65,6 +85,16 @@ fn move(it: *ecs.iter_t, positions: []Position, velocities: []const Velocity) vo
     for (positions, velocities) |*p, v| {
         p.x += v.x * dt;
         p.y += v.y * dt;
+    }
+}
+
+fn capture(it: *ecs.iter_t, positions: []const Position, velocities: []const Velocity, captures: []const Capture) void {
+    for (it.entities(), positions, velocities, captures) |e, p, v, cap| {
+        const c = ecs.get(it.world, cap.center, Position) orelse continue;
+        // Distance past center along v, scaled by |v| on both sides.
+        if ((p.x - c.x) * v.x + (p.y - c.y) * v.y < cap.after * std.math.hypot(v.x, v.y)) continue;
+        set(it.world, e, Orbits, .{ .center = cap.center });
+        ecs.remove(it.world, e, Capture);
     }
 }
 
@@ -97,7 +127,8 @@ pub const FixedClock = struct {
     }
 };
 
-pub const Demo = struct { center: ecs.entity_t, orbiter: ecs.entity_t, radius: f32 };
+/// `speed` is the orbiter's (circular) orbital speed.
+pub const Demo = struct { center: ecs.entity_t, orbiter: ecs.entity_t, radius: f32, speed: f32 };
 
 /// A static ball at (`cx`, `cy`) and a second ball circling it at `radius`,
 /// once every `period` seconds. Speed and pull are chosen so the orbit is an
@@ -108,7 +139,7 @@ pub fn spawnDemo(world: *ecs.world_t, cx: f32, cy: f32, radius: f32, period: f32
     const center = ecs.new_id(world);
     set(world, center, Position, .{ .x = cx, .y = cy });
     set(world, center, Attractor, .{ .mu = speed * speed * radius });
-    set(world, center, Ball, .{ .radius = 24, .rgba = 0xF5A623FF });
+    set(world, center, Ball, .{ .radius = 24, .rgba = orange });
 
     const orbiter = ecs.new_id(world);
     const start: Position = .{ .x = cx + radius, .y = cy };
@@ -116,9 +147,29 @@ pub fn spawnDemo(world: *ecs.world_t, cx: f32, cy: f32, radius: f32, period: f32
     set(world, orbiter, PrevPosition, .{ .x = start.x, .y = start.y });
     set(world, orbiter, Velocity, .{ .x = 0, .y = speed });
     set(world, orbiter, Orbits, .{ .center = center });
-    set(world, orbiter, Ball, .{ .radius = 10, .rgba = 0x4A90E2FF });
+    set(world, orbiter, Ball, .{ .radius = 10, .rgba = teal });
 
-    return .{ .center = center, .orbiter = orbiter, .radius = radius };
+    return .{ .center = center, .orbiter = orbiter, .radius = radius, .speed = speed };
+}
+
+/// A third ball entering from `start_x` (left of the attractor) heading +x,
+/// aimed through the gap between the attractor and the orbit ring. Gravity
+/// catches it once it is past the attractor.
+/// @param {*ecs.world_t} world - world with `register` already run.
+/// @param {Demo} demo - the demo it flies past, from `spawnDemo`.
+/// @param {f32} start_x - entry x; pass a value off the left edge.
+/// @returns {ecs.entity_t} the new ball.
+pub fn spawnNewcomer(world: *ecs.world_t, demo: Demo, start_x: f32) ecs.entity_t {
+    const c = ecs.get(world, demo.center, Position).?;
+    const start: Position = .{ .x = start_x, .y = c.y - demo.radius * newcomer_offset };
+
+    const e = ecs.new_id(world);
+    set(world, e, Position, start);
+    set(world, e, PrevPosition, .{ .x = start.x, .y = start.y });
+    set(world, e, Velocity, .{ .x = newcomer_speed * demo.speed, .y = 0 });
+    set(world, e, Capture, .{ .center = demo.center, .after = demo.radius * newcomer_capture });
+    set(world, e, Ball, .{ .radius = newcomer_radius, .rgba = sand });
+    return e;
 }
 
 /// Query over every drawable entity: term 0 = `Position`, term 1 = `Ball`,
@@ -265,6 +316,30 @@ test "snapshot keeps the position from before the step" {
     const prev = ecs.get(world, d.orbiter, PrevPosition).?;
     try std.testing.expectEqual(PrevPosition{ .x = before.x, .y = before.y }, prev.*);
     try expect(distance(before, ecs.get(world, d.orbiter, Position).?.*) > 0);
+}
+
+test "newcomer flies straight past the attractor, then stays captured" {
+    const world = ecs.init();
+    defer _ = ecs.fini(world);
+    register(world);
+    const d = spawnDemo(world, 400, 225, 150, 4);
+    const n = spawnNewcomer(world, d, -8);
+    const c: Position = .{ .x = 400, .y = 225 };
+
+    var steps: usize = 0;
+    while (ecs.has_id(world, n, ecs.id(Capture))) : (steps += 1) {
+        try expect(steps < 600);
+        step(world, 1);
+        try std.testing.expectEqual(225 - 150 * newcomer_offset, ecs.get(world, n, Position).?.y);
+    }
+    try expect(ecs.get(world, n, Position).?.x >= 400 + 150 * newcomer_capture);
+    try expect(ecs.has_id(world, n, ecs.id(Orbits)));
+
+    for (0..20 * 240) |_| { // ~20 orbiter periods
+        step(world, 1);
+        const r = distance(c, ecs.get(world, n, Position).?.*);
+        try expect(r > 30 and r < 200);
+    }
 }
 
 test "ballQuery yields both demo balls" {
