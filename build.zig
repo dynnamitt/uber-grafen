@@ -70,7 +70,7 @@ pub fn build(b: *std.Build) !void {
     if (is_web) {
         try addWebBuild(b, exe_mod, raylib_dep, flecs_lib, optimize, run_step);
     } else {
-        const exe = b.addExecutable(.{ .name = "uber-graphen", .root_module = exe_mod });
+        const exe = b.addExecutable(.{ .name = "zig-rayflecs", .root_module = exe_mod });
         b.installArtifact(exe);
 
         const run_cmd = b.addRunArtifact(exe);
@@ -106,7 +106,7 @@ fn addWebBuild(
     flecs_lib.root_module.addIncludePath(try emsdk.path(b, "upstream/emscripten/cache/sysroot/include"));
     flecs_lib.step.dependOn(findStep(&raylib_lib.step, "Activate EMSDK") orelse return error.EmsdkActivateStepNotFound);
 
-    const app = b.addLibrary(.{ .name = "uber-graphen", .root_module = exe_mod });
+    const app = b.addLibrary(.{ .name = "zig-rayflecs", .root_module = exe_mod });
 
     // No ASYNCIFY: main.zig hands frame() to emscripten_set_main_loop
     // (requestAnimationFrame), so nothing needs to unwind the stack per frame.

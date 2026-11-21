@@ -78,7 +78,7 @@ var clock: sim.FixedClock = .{};
 var stats: sim.FrameStats = .{};
 
 pub fn main() !void {
-    rl.initWindow(width, height, "uber-graphen");
+    rl.initWindow(width, height, "zig-rayflecs");
     defer rl.closeWindow();
 
     world = ecs.init();
