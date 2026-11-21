@@ -6,6 +6,8 @@ const sim = @import("sim");
 
 const width = 800;
 const height = 450;
+const background = 0x0E1414FF; // near-black teal, under the tech-trio.svg palette
+const newcomer_start_x = -16; // just off the left edge
 // emscripten_set_main_loop args: fps 0 = requestAnimationFrame; nonzero
 // simulate_infinite_loop = never return from main.
 const web_loop_fps = 0;
@@ -61,6 +63,7 @@ pub fn main() !void {
     defer _ = ecs.fini(world);
     sim.register(world);
     demo = sim.spawnDemo(world, width / 2, height / 2, 150, 4);
+    _ = sim.spawnNewcomer(world, demo, newcomer_start_x);
 
     balls = try sim.ballQuery(world);
     defer ecs.query_fini(balls);
@@ -85,11 +88,11 @@ fn frame() callconv(.c) void {
 
     rl.beginDrawing();
     defer rl.endDrawing();
-    rl.clearBackground(rl.getColor(0x14161AFF));
+    rl.clearBackground(rl.getColor(background));
 
     // Orbit guide, then every Position + Ball entity.
     const c = ecs.get(world, demo.center, sim.Position).?;
-    rl.drawCircleLinesV(.{ .x = c.x, .y = c.y }, demo.radius, rl.getColor(0x2E3440FF));
+    rl.drawCircleLinesV(.{ .x = c.x, .y = c.y }, demo.radius, rl.getColor(sim.deep_teal));
 
     var it = ecs.query_iter(world, balls);
     while (ecs.query_next(&it)) {
@@ -107,6 +110,5 @@ fn frame() callconv(.c) void {
         }
     }
 
-    rl.drawText("uber-graphen: raylib + flecs", 16, 16, 20, rl.getColor(0x8892A0FF));
     rl.drawFPS(width - 96, 16);
 }
