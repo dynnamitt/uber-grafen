@@ -2,3 +2,9 @@
 zig-cache/
 zig-out/
 zig-pkg/
+
+# Agent skills: installed per machine from skills-lock.json (see .claude/skills/zig-ray-flecs)
+.agents/
+.claude/skills/*
+!.claude/skills/zig-ray-flecs/
+.claude/worktrees/
