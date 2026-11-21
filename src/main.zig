@@ -42,42 +42,70 @@ const EmscriptenPages = struct {
     }
 };
 
+// raylib's own frame pacing on web (WindowShouldClose's emscripten_sleep,
+// SetTargetFPS's WaitTime) isn't synced to vsync and needs Asyncify, so the
+// browser drives frame() through requestAnimationFrame instead.
+extern "c" fn emscripten_set_main_loop(func: *const fn () callconv(.c) void, fps: c_int, simulate_infinite_loop: bool) void;
+
+/// Globals, not locals in main: on web, emscripten_set_main_loop unwinds
+/// main's stack and calls frame() later.
+var world: *ecs.world_t = undefined;
+var demo: sim.Demo = undefined;
+var balls: *ecs.query_t = undefined;
+var clock: sim.FixedClock = .{};
+
 pub fn main() !void {
     rl.initWindow(width, height, "uber-graphen");
     defer rl.closeWindow();
-    rl.setTargetFPS(60);
 
-    const world = ecs.init();
+    world = ecs.init();
     defer _ = ecs.fini(world);
     sim.register(world);
-    const demo = sim.spawnDemo(world, width / 2, height / 2, 150, 4);
+    demo = sim.spawnDemo(world, width / 2, height / 2, 150, 4);
 
-    const balls = try sim.ballQuery(world);
+    balls = try sim.ballQuery(world);
     defer ecs.query_fini(balls);
 
-    var clock: sim.FixedClock = .{};
-    while (!rl.windowShouldClose()) {
-        // Fixed steps, never raylib's raw dt: a long frame would otherwise
-        // throw the orbit off for good, and dt=0 (first frame) would make
-        // flecs measure its own clock.
-        for (0..clock.advance(rl.getFrameTime())) |_| _ = ecs.progress(world, sim.step_dt);
-
-        rl.beginDrawing();
-        defer rl.endDrawing();
-        rl.clearBackground(rl.getColor(0x14161AFF));
-
-        // Orbit guide, then every Position + Ball entity.
-        const c = ecs.get(world, demo.center, sim.Position).?;
-        rl.drawCircleLinesV(.{ .x = c.x, .y = c.y }, demo.radius, rl.getColor(0x2E3440FF));
-
-        var it = ecs.query_iter(world, balls);
-        while (ecs.query_next(&it)) {
-            const ps = ecs.field(&it, sim.Position, 0).?;
-            const bs = ecs.field(&it, sim.Ball, 1).?;
-            for (ps, bs) |p, b| rl.drawCircleV(.{ .x = p.x, .y = p.y }, b.radius, rl.getColor(b.rgba));
-        }
-
-        rl.drawText("uber-graphen: raylib + flecs", 16, 16, 20, rl.getColor(0x8892A0FF));
-        rl.drawFPS(width - 96, 16);
+    if (builtin.os.tag == .emscripten) {
+        // fps 0 = requestAnimationFrame. Never returns, so the defers above don't run.
+        emscripten_set_main_loop(frame, 0, true);
+    } else {
+        rl.setTargetFPS(60);
+        while (!rl.windowShouldClose()) frame();
     }
+}
+
+fn frame() callconv(.c) void {
+    // Fixed steps, never raylib's raw dt: a long frame would otherwise
+    // throw the orbit off for good, and dt=0 (first frame) would make
+    // flecs measure its own clock.
+    for (0..clock.advance(rl.getFrameTime())) |_| _ = ecs.progress(world, sim.step_dt);
+    const alpha = clock.alpha();
+
+    rl.beginDrawing();
+    defer rl.endDrawing();
+    rl.clearBackground(rl.getColor(0x14161AFF));
+
+    // Orbit guide, then every Position + Ball entity.
+    const c = ecs.get(world, demo.center, sim.Position).?;
+    rl.drawCircleLinesV(.{ .x = c.x, .y = c.y }, demo.radius, rl.getColor(0x2E3440FF));
+
+    var it = ecs.query_iter(world, balls);
+    while (ecs.query_next(&it)) {
+        const ps = ecs.field(&it, sim.Position, 0).?;
+        const bs = ecs.field(&it, sim.Ball, 1).?;
+        const prevs = ecs.field(&it, sim.PrevPosition, 2);
+        for (ps, bs, 0..) |p, b, i| {
+            // Draw between the last two steps, so motion stays smooth when
+            // frames don't line up with steps (rAF jitter, 120/144 Hz screens).
+            const at: rl.Vector2 = if (prevs) |pp|
+                .{ .x = std.math.lerp(pp[i].x, p.x, alpha), .y = std.math.lerp(pp[i].y, p.y, alpha) }
+            else
+                .{ .x = p.x, .y = p.y };
+            rl.drawCircleV(at, b.radius, rl.getColor(b.rgba));
+        }
+    }
+
+    rl.drawText("uber-graphen: raylib + flecs", 16, 16, 20, rl.getColor(0x8892A0FF));
+    rl.drawFPS(width - 96, 16);
 }

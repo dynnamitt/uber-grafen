@@ -11,7 +11,11 @@ pub fn build(b: *std.Build) !void {
     const optimize = b.standardOptimizeOption(.{});
     const is_web = target.result.os.tag == .emscripten;
 
-    const raylib_dep = b.dependency("raylib_zig", .{ .target = target, .optimize = optimize });
+    // Debug builds still get an optimised raylib: its C code isn't what we
+    // debug, and unoptimised it costs frame time. zflecs stays at `optimize`
+    // so its sanitize checks keep guarding the tests.
+    const raylib_optimize: std.builtin.OptimizeMode = if (optimize == .debug) .fast else optimize;
+    const raylib_dep = b.dependency("raylib_zig", .{ .target = target, .optimize = raylib_optimize });
     const zflecs_dep = b.dependency("zflecs", .{ .target = target, .optimize = optimize });
     const flecs_lib = zflecs_dep.artifact("flecs");
 
@@ -77,13 +81,13 @@ fn addWebBuild(
 
     const app = b.addLibrary(.{ .name = "uber-graphen", .root_module = exe_mod });
 
-    // ASYNCIFY (on by default) lets main()'s plain while-loop yield to the
-    // browser each frame, so main.zig needs no emscripten_set_main_loop.
+    // No ASYNCIFY: main.zig hands frame() to emscripten_set_main_loop
+    // (requestAnimationFrame), so nothing needs to unwind the stack per frame.
     var settings = emsdk.emccDefaultSettings(b.allocator, .{ .optimize = optimize });
     try settings.put("STACK_SIZE", web_stack_size);
     const emcc_step = try emsdk.emccStep(b, &.{}, &.{ raylib_lib, app }, .{
         .optimize = optimize,
-        .flags = emsdk.emccDefaultFlags(b.allocator, .{ .optimize = optimize }),
+        .flags = emsdk.emccDefaultFlags(b.allocator, .{ .optimize = optimize, .asyncify = false }),
         .settings = settings,
         .shell_file_path = b.path("web/shell.html"),
         .install_dir = .{ .custom = "web" },
