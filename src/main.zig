@@ -3,6 +3,7 @@ const builtin = @import("builtin");
 const rl = @import("raylib");
 const ecs = @import("zflecs");
 const sim = @import("sim");
+const config = @import("config");
 
 const width = 800;
 const height = 450;
@@ -12,10 +13,9 @@ const orbit_guide = 0x1E5252FF; // deep teal
 
 const orbit_radius = 150;
 const orbit_period = 4; // seconds
-// Newcomers: `newcomer_count` balls enter from random angles, between
-// `newcomer_max_dist - newcomer_jitter` and `newcomer_max_dist` from the
-// attractor, all beyond the corners of the canvas.
-const newcomer_count = 1000;
+// Newcomers: `config.newcomers` balls (zig build -Dnewcomers=N) enter from
+// random angles, between `newcomer_max_dist - newcomer_jitter` and
+// `newcomer_max_dist` from the attractor, all beyond the corners of the canvas.
 const newcomer_max_dist = 600;
 const newcomer_jitter = 100;
 comptime {
@@ -88,7 +88,7 @@ pub fn main() !void {
     // raylib seeds its RNG from the clock in initWindow.
     // max - 1: raylib computes max - min + 1, which overflows (a UBSan trap) at maxInt.
     var prng = std.Random.DefaultPrng.init(@intCast(rl.getRandomValue(0, std.math.maxInt(i32) - 1)));
-    sim.spawnNewcomers(world, demo, prng.random(), newcomer_count, newcomer_max_dist, newcomer_jitter);
+    sim.spawnNewcomers(world, demo, prng.random(), config.newcomers, newcomer_max_dist, newcomer_jitter);
 
     balls = try sim.ballQuery(world);
     defer ecs.query_fini(balls);
