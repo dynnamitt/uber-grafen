@@ -1,4 +1,4 @@
-# zig/raylib/flecs
+# zig-rayflecs
 
 [![Zig 0.17](https://img.shields.io/badge/Zig-0.17-F7A41D?logo=zig&logoColor=white)](https://ziglang.org/download/)
 [![WebGL](https://img.shields.io/badge/WebGL-live_demo-990000?logo=webgl&logoColor=white)](https://dynnamitt.github.io/uber-grafen/)
