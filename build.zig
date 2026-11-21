@@ -1,6 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const rlz = @import("raylib_zig");
+const zflecs = @import("zflecs");
 
 // emscripten's default 64 KiB stack overflows in Debug web builds (zig + flecs
 // frames); release builds don't check, so an overflow there corrupts memory.
@@ -18,7 +19,24 @@ pub fn build(b: *std.Build) !void {
     // so its sanitize checks keep guarding the tests.
     const raylib_optimize: std.builtin.OptimizeMode = if (optimize == .debug) .safe else optimize;
     const raylib_dep = b.dependency("raylib_zig", .{ .target = target, .optimize = raylib_optimize });
-    const zflecs_dep = b.dependency("zflecs", .{ .target = target, .optimize = optimize });
+    // Flecs checks must match what flecs.h derives from NDEBUG (set only in
+    // ReleaseFast/Small), or zflecs' Zig structs disagree with C's. zflecs'
+    // default reads the build runner's mode (always Debug) instead of ours.
+    const flecs_checks: zflecs.debug_mode = switch (optimize) {
+        .debug => .sanitize,
+        .safe => .debug,
+        .fast, .small => .none,
+    };
+    // Add-ons: pipeline (pulls in system) plus the always-on os_api_impl. Log
+    // only where checks run: without it a failed assert aborts silently.
+    const zflecs_dep = b.dependency("zflecs", .{
+        .target = target,
+        .optimize = optimize,
+        .custom_build = .whitelist,
+        .toggle_pipeline_addon = true,
+        .toggle_log_addon = flecs_checks != .none,
+        .debug_mode = flecs_checks,
+    });
     const flecs_lib = zflecs_dep.artifact("flecs");
 
     // ECS-only code (components + systems). No raylib here, so it tests headless.
