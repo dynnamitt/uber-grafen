@@ -1,9 +1,20 @@
+const std = @import("std");
+const builtin = @import("builtin");
 const rl = @import("raylib");
 const ecs = @import("zflecs");
 const sim = @import("sim");
 
 const width = 800;
 const height = 450;
+
+// zflecs allocates through std.heap.page_allocator, which on wasm calls
+// memory.grow behind emscripten's back. That fails on emscripten's fixed-size
+// heap (panic: OOM in ecs.init), so route it through emscripten's malloc.
+pub const os = if (builtin.os.tag == .emscripten) struct {
+    pub const heap = struct {
+        pub const page_allocator = std.heap.c_allocator;
+    };
+} else struct {};
 
 pub fn main() !void {
     rl.initWindow(width, height, "uber-graphen");

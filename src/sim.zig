@@ -13,6 +13,15 @@ pub const Attractor = struct { mu: f32 };
 /// Accelerates toward `center`, which must have `Position` + `Attractor`.
 pub const Orbits = struct { center: ecs.entity_t };
 
+// zflecs declares ecs_set_id as returning entity_t, but flecs 4.1 returns void.
+// Native ABIs ignore the bogus return value; on wasm, wasm-ld replaces the call
+// with a trap. So declare it correctly and avoid ecs.set.
+extern fn ecs_set_id(world: *ecs.world_t, entity: ecs.entity_t, component: ecs.id_t, size: usize, ptr: ?*const anyopaque) void;
+
+fn set(world: *ecs.world_t, entity: ecs.entity_t, comptime T: type, val: T) void {
+    ecs_set_id(world, entity, ecs.id(T), @sizeOf(T), &val);
+}
+
 /// Registers components and systems on `world`.
 pub fn register(world: *ecs.world_t) void {
     ecs.COMPONENT(world, Position);
@@ -81,15 +90,15 @@ pub fn spawnDemo(world: *ecs.world_t, cx: f32, cy: f32, radius: f32, period: f32
     const speed = 2 * std.math.pi * radius / period;
 
     const center = ecs.new_id(world);
-    _ = ecs.set(world, center, Position, .{ .x = cx, .y = cy });
-    _ = ecs.set(world, center, Attractor, .{ .mu = speed * speed * radius });
-    _ = ecs.set(world, center, Ball, .{ .radius = 24, .rgba = 0xF5A623FF });
+    set(world, center, Position, .{ .x = cx, .y = cy });
+    set(world, center, Attractor, .{ .mu = speed * speed * radius });
+    set(world, center, Ball, .{ .radius = 24, .rgba = 0xF5A623FF });
 
     const orbiter = ecs.new_id(world);
-    _ = ecs.set(world, orbiter, Position, .{ .x = cx + radius, .y = cy });
-    _ = ecs.set(world, orbiter, Velocity, .{ .x = 0, .y = speed });
-    _ = ecs.set(world, orbiter, Orbits, .{ .center = center });
-    _ = ecs.set(world, orbiter, Ball, .{ .radius = 10, .rgba = 0x4A90E2FF });
+    set(world, orbiter, Position, .{ .x = cx + radius, .y = cy });
+    set(world, orbiter, Velocity, .{ .x = 0, .y = speed });
+    set(world, orbiter, Orbits, .{ .center = center });
+    set(world, orbiter, Ball, .{ .radius = 10, .rgba = 0x4A90E2FF });
 
     return .{ .center = center, .orbiter = orbiter, .radius = radius };
 }
@@ -124,8 +133,8 @@ test "move system integrates velocity over delta time" {
     register(world);
 
     const e = ecs.new_id(world);
-    _ = ecs.set(world, e, Position, .{ .x = 0, .y = 0 });
-    _ = ecs.set(world, e, Velocity, .{ .x = 10, .y = -4 });
+    set(world, e, Position, .{ .x = 0, .y = 0 });
+    set(world, e, Velocity, .{ .x = 10, .y = -4 });
 
     _ = ecs.progress(world, 0.5);
     _ = ecs.progress(world, 0.5);
@@ -141,7 +150,7 @@ test "entities without Velocity are not moved" {
     register(world);
 
     const e = ecs.new_id(world);
-    _ = ecs.set(world, e, Position, .{ .x = 3, .y = 7 });
+    set(world, e, Position, .{ .x = 3, .y = 7 });
     _ = ecs.progress(world, 1.0);
 
     const p = ecs.get(world, e, Position).?;
