@@ -6,7 +6,9 @@ const sim = @import("sim");
 
 const width = 800;
 const height = 450;
-const background = 0x0E1414FF; // near-black teal, under the tech-trio.svg palette
+// Render-only colours (tech-trio.svg palette; ball colours are in sim.zig).
+const background = 0x0E1414FF; // near-black teal
+const orbit_guide = 0x1E5252FF; // deep teal
 const newcomer_start_x = -16; // just off the left edge
 // emscripten_set_main_loop args: fps 0 = requestAnimationFrame; nonzero
 // simulate_infinite_loop = never return from main.
@@ -92,7 +94,7 @@ fn frame() callconv(.c) void {
 
     // Orbit guide, then every Position + Ball entity.
     const c = ecs.get(world, demo.center, sim.Position).?;
-    rl.drawCircleLinesV(.{ .x = c.x, .y = c.y }, demo.radius, rl.getColor(sim.deep_teal));
+    rl.drawCircleLinesV(.{ .x = c.x, .y = c.y }, demo.radius, rl.getColor(orbit_guide));
 
     var it = ecs.query_iter(world, balls);
     while (ecs.query_next(&it)) {

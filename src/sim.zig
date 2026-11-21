@@ -3,11 +3,11 @@
 const std = @import("std");
 const ecs = @import("zflecs");
 
-// Palette from tech-trio.svg (0xRRGGBBAA).
+// Ball colours from the tech-trio.svg palette (0xRRGGBBAA); render-only
+// colours live in main.zig and web/shell.html.
 pub const orange: u32 = 0xC87137FF;
 pub const teal: u32 = 0x2E7E7EFF;
 pub const sand: u32 = 0xC8A878FF;
-pub const deep_teal: u32 = 0x1E5252FF;
 
 // Newcomer path, as fractions of the orbit radius: it flies straight past the
 // attractor at `newcomer_offset` (the void between the two balls), and gravity
@@ -90,8 +90,8 @@ fn move(it: *ecs.iter_t, positions: []Position, velocities: []const Velocity) vo
 fn capture(it: *ecs.iter_t, positions: []const Position, velocities: []const Velocity, captures: []const Capture) void {
     for (it.entities(), positions, velocities, captures) |e, p, v, cap| {
         const c = ecs.get(it.world, cap.center, Position) orelse continue;
-        const speed = std.math.hypot(v.x, v.y);
-        if (speed == 0 or ((p.x - c.x) * v.x + (p.y - c.y) * v.y) / speed < cap.after) continue;
+        // Distance past center along v, scaled by |v| on both sides.
+        if ((p.x - c.x) * v.x + (p.y - c.y) * v.y < cap.after * std.math.hypot(v.x, v.y)) continue;
         set(it.world, e, Orbits, .{ .center = cap.center });
         ecs.remove(it.world, e, Capture);
     }
@@ -126,7 +126,8 @@ pub const FixedClock = struct {
     }
 };
 
-pub const Demo = struct { center: ecs.entity_t, orbiter: ecs.entity_t, radius: f32 };
+/// `speed` is the orbiter's (circular) orbital speed.
+pub const Demo = struct { center: ecs.entity_t, orbiter: ecs.entity_t, radius: f32, speed: f32 };
 
 /// A static ball at (`cx`, `cy`) and a second ball circling it at `radius`,
 /// once every `period` seconds. Speed and pull are chosen so the orbit is an
@@ -147,7 +148,7 @@ pub fn spawnDemo(world: *ecs.world_t, cx: f32, cy: f32, radius: f32, period: f32
     set(world, orbiter, Orbits, .{ .center = center });
     set(world, orbiter, Ball, .{ .radius = 10, .rgba = teal });
 
-    return .{ .center = center, .orbiter = orbiter, .radius = radius };
+    return .{ .center = center, .orbiter = orbiter, .radius = radius, .speed = speed };
 }
 
 /// A third ball entering from `start_x` (left of the attractor) heading +x,
@@ -155,13 +156,12 @@ pub fn spawnDemo(world: *ecs.world_t, cx: f32, cy: f32, radius: f32, period: f32
 /// catches it once it is past the attractor. Returns the new entity.
 pub fn spawnNewcomer(world: *ecs.world_t, demo: Demo, start_x: f32) ecs.entity_t {
     const c = ecs.get(world, demo.center, Position).?;
-    const mu = ecs.get(world, demo.center, Attractor).?.mu;
     const start: Position = .{ .x = start_x, .y = c.y - demo.radius * newcomer_offset };
 
     const e = ecs.new_id(world);
     set(world, e, Position, start);
     set(world, e, PrevPosition, .{ .x = start.x, .y = start.y });
-    set(world, e, Velocity, .{ .x = newcomer_speed * @sqrt(mu / demo.radius), .y = 0 });
+    set(world, e, Velocity, .{ .x = newcomer_speed * demo.speed, .y = 0 });
     set(world, e, Capture, .{ .center = demo.center, .after = demo.radius * newcomer_capture });
     set(world, e, Ball, .{ .radius = 8, .rgba = sand });
     return e;
