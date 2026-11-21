@@ -49,8 +49,8 @@ pub const Orbits = struct {};
 pub const Capture = struct { after: f32 };
 
 // Fields of the extra terms `register` appends after each system's own params.
-const gravity_center_pos = 2;
-const gravity_center_attractor = 3;
+const gravity_center_pos = 3;
+const gravity_center_attractor = 4;
 const capture_data = 2;
 const capture_center_pos = 3;
 
@@ -68,10 +68,24 @@ fn setPair(world: *ecs.world_t, entity: ecs.entity_t, comptime T: type, target: 
     ecs_set_id(world, entity, ecs.pair(ecs.id(T), target), @sizeOf(T), &val);
 }
 
-/// Term for the center's `T`, found by following relationship `rel` up.
-/// Unlike a `$center` variable, this keeps the system's query fully cached.
-fn onCenter(comptime T: type, rel: ecs.entity_t) ecs.term_t {
-    return .{ .id = ecs.id(T), .src = .{ .id = ecs.Up }, .trav = rel, .inout = .In };
+// `$center` binds the target of `(rel, $center)`; terms on it read that exact
+// entity. (An `up` traversal would be cached, but it climbs past a center that
+// lacks the component, e.g. to a moon's sun.)
+const center_var = "$center";
+
+/// Term matching the pair `(rel, $center)`.
+fn toCenter(comptime rel: type) ecs.term_t {
+    return .{ .first = .{ .id = ecs.id(rel) }, .second = .{ .name = center_var }, .inout = .In };
+}
+
+/// Term for `$center`'s `T`.
+fn onCenter(comptime T: type) ecs.term_t {
+    return .{ .id = ecs.id(T), .src = .{ .name = center_var }, .inout = .In };
+}
+
+/// A field the whole table shares (the center's): one value, not a slice.
+fn sharedField(it: *ecs.iter_t, comptime T: type, index: i8) T {
+    return ecs.field(it, T, index).?[0];
 }
 
 /// Registers components and systems on `world`.
@@ -83,24 +97,16 @@ pub fn register(world: *ecs.world_t) void {
     ecs.COMPONENT(world, Attractor);
     ecs.TAG(world, Orbits);
     ecs.COMPONENT(world, Capture);
-    // `up` queries may only follow traversable relationships.
-    ecs.add_id(world, ecs.id(Orbits), ecs.Traversable);
-    ecs.add_id(world, ecs.id(Capture), ecs.Traversable);
     addSystem(world, "snapshot", ecs.OnLoad, snapshot, &.{});
     // gravity (PreUpdate) updates velocity before move (OnUpdate) uses it:
     // semi-implicit Euler, which keeps a circular orbit from spiralling out.
-    addSystem(world, "gravity", ecs.PreUpdate, gravity, &.{
-        onCenter(Position, ecs.id(Orbits)),
-        onCenter(Attractor, ecs.id(Orbits)),
-    });
+    addSystem(world, "gravity", ecs.PreUpdate, gravity, &.{ toCenter(Orbits), onCenter(Position), onCenter(Attractor) });
     addSystem(world, "move", ecs.OnUpdate, move, &.{});
-    addSystem(world, "capture", ecs.PostUpdate, capture, &.{
-        .{ .id = ecs.pair(ecs.id(Capture), ecs.Wildcard), .inout = .In },
-        onCenter(Position, ecs.id(Capture)),
-    });
+    addSystem(world, "capture", ecs.PostUpdate, capture, &.{ toCenter(Capture), onCenter(Position) });
 }
 
-/// Every system may split across `ecs.set_threads` workers (none by default).
+/// zflecs' `ADD_SYSTEM_WITH_FILTERS`, plus `multi_threaded` (which it can't
+/// set): every system may split across `ecs.set_threads` workers.
 fn addSystem(world: *ecs.world_t, name: [*:0]const u8, phase: ecs.entity_t, comptime f: anytype, filters: []const ecs.term_t) void {
     var desc = ecs.SYSTEM_DESC_WITH_FILTERS(f, filters);
     desc.phase = phase;
@@ -112,11 +118,10 @@ fn snapshot(positions: []const Position, prevs: []PrevPosition) void {
     for (positions, prevs) |p, *prev| prev.* = .{ .x = p.x, .y = p.y };
 }
 
-// The center's fields are shared by the whole table: read [0].
 fn gravity(it: *ecs.iter_t, positions: []const Position, velocities: []Velocity) void {
     const dt = it.delta_time;
-    const c = ecs.field(it, Position, gravity_center_pos).?[0];
-    const a = ecs.field(it, Attractor, gravity_center_attractor).?[0];
+    const c = sharedField(it, Position, gravity_center_pos);
+    const a = sharedField(it, Attractor, gravity_center_attractor);
     for (positions, velocities) |p, *v| {
         const dx = c.x - p.x;
         const dy = c.y - p.y;
@@ -140,7 +145,7 @@ fn move(it: *ecs.iter_t, positions: []Position, velocities: []const Velocity) vo
 fn capture(it: *ecs.iter_t, positions: []const Position, velocities: []const Velocity) void {
     const captures = ecs.field(it, Capture, capture_data).?;
     const center = ecs.field_src(it, capture_center_pos);
-    const c = ecs.field(it, Position, capture_center_pos).?[0];
+    const c = sharedField(it, Position, capture_center_pos);
     for (it.entities(), positions, velocities, captures) |e, p, v, cap| {
         // Distance past center along v, scaled by |v| on both sides.
         if ((p.x - c.x) * v.x + (p.y - c.y) * v.y < cap.after * std.math.hypot(v.x, v.y)) continue;
@@ -568,4 +573,20 @@ test "worker threads give the same result as one thread" {
         try std.testing.expectEqual(@as(usize, balls), n);
     }
     try std.testing.expectEqualSlices(Position, &runs[0], &runs[1]);
+}
+
+test "a center without Attractor pulls nothing, even if its own center has one" {
+    const world = ecs.init();
+    defer _ = ecs.fini(world);
+    register(world);
+    const d = spawnDemo(world, 0, 0, 100, 2);
+
+    // A moon of the orbiter, which has Position but no Attractor.
+    const moon = ecs.new_id(world);
+    set(world, moon, Position, .{ .x = 100, .y = 20 });
+    set(world, moon, Velocity, .{ .x = 0, .y = 0 });
+    ecs.add_pair(world, moon, ecs.id(Orbits), d.orbiter);
+
+    step(world, 10);
+    try std.testing.expectEqual(Velocity{ .x = 0, .y = 0 }, ecs.get(world, moon, Velocity).?.*);
 }
