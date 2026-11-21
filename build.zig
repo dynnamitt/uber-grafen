@@ -1,6 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const rlz = @import("raylib_zig");
+const zflecs = @import("zflecs");
 
 // emscripten's default 64 KiB stack overflows in Debug web builds (zig + flecs
 // frames); release builds don't check, so an overflow there corrupts memory.
@@ -18,14 +19,15 @@ pub fn build(b: *std.Build) !void {
     // so its sanitize checks keep guarding the tests.
     const raylib_optimize: std.builtin.OptimizeMode = if (optimize == .debug) .safe else optimize;
     const raylib_dep = b.dependency("raylib_zig", .{ .target = target, .optimize = raylib_optimize });
-    // Only the Flecs add-ons sim.register uses (system, pipeline; os_api_impl is
-    // always on). Dropping REST, script, stats, … cuts the wasm by ~45%.
+    // Only the add-on sim.register needs: pipeline (it pulls in system). And
+    // sanitize only in Debug: zflecs' default keys off the build runner's mode,
+    // which is always Debug, so release builds got sanitize too.
     const zflecs_dep = b.dependency("zflecs", .{
         .target = target,
         .optimize = optimize,
         .custom_build = .whitelist,
-        .toggle_system_addon = true,
         .toggle_pipeline_addon = true,
+        .debug_mode = @as(zflecs.debug_mode, if (optimize == .debug) .sanitize else .none),
     });
     const flecs_lib = zflecs_dep.artifact("flecs");
 

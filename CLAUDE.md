@@ -34,8 +34,6 @@ CI (`.github/workflows/ci.yml`) runs on pull requests (and manually via workflow
 
 Pinned by commit + content hash in `build.zig.zon`: `raylib_zig` (raylib-zig org — moved from Not-Nik/raylib-zig) and `zflecs` (zig-gamedev, bundles flecs v4.1.x). Update with `zig fetch --save git+https://github.com/<repo>#<commit>`. Zig 0.17 unpacks packages into a **project-local `zig-pkg/`** directory (gitignored), not only the global cache.
 
-zflecs is built with `custom_build = .whitelist` and only the system and pipeline add-ons (`build.zig`). Using another add-on's API (timers, meta/reflection, JSON, REST, …) fails to link until you add its `toggle_<name>_addon = true`.
-
 Transitive deps: raylib-zig → raylib, raygui, emsdk; zflecs → translate-c → arocc (both on **codeberg.org**). Fetching needs github.com and codeberg.org.
 
 ## Architecture
@@ -61,4 +59,4 @@ Keep that boundary: systems that change state go in `sim`. Rendering reads ECS d
 
 ### ECS conventions (zflecs)
 
-Components are plain Zig structs registered with `ecs.COMPONENT`. Systems are registered with `ecs.ADD_SYSTEM(world, name, phase, fn)`, where `fn` takes slices of components (optionally `*ecs.iter_t` first, e.g. for `it.delta_time`). The zflecs README and its `src/tests.zig` (in `zig-pkg/zflecs-*/`) are the best API reference, except: **never use `ecs.set`, `ecs.set_pair` or `ecs.set_id`.** zflecs declares `ecs_set_id` with a wrong return type, so these trap on web; use `set` in `sim.zig`.
+Components are plain Zig structs registered with `ecs.COMPONENT`. Systems are registered with `ecs.ADD_SYSTEM(world, name, phase, fn)`, where `fn` takes slices of components (optionally `*ecs.iter_t` first, e.g. for `it.delta_time`). The zflecs README and its `src/tests.zig` (in `zig-pkg/zflecs-*/`) are the best API reference, except: **never use `ecs.set`, `ecs.set_pair` or `ecs.set_id`.** zflecs declares `ecs_set_id` with a wrong return type, so these trap on web; use `set` in `sim.zig`. Flecs is built whitelist-only (pipeline + system, in `build.zig`): another add-on's API (timers, meta, JSON, REST, …) fails to link until you add its `toggle_<name>_addon = true` there.
