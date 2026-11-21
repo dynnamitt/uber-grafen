@@ -89,8 +89,9 @@ pub const FixedClock = struct {
         return n;
     }
 
-    /// How far (0..1) the frame is past the latest step: the weight that
-    /// rendering gives the current `Position` over `PrevPosition`.
+    /// How far the frame is past the latest step.
+    /// @returns {f32} 0..1, the weight rendering gives the current `Position`
+    /// over `PrevPosition`.
     pub fn alpha(self: FixedClock) f32 {
         return self.acc / step_dt;
     }

@@ -6,6 +6,10 @@ const sim = @import("sim");
 
 const width = 800;
 const height = 450;
+// emscripten_set_main_loop args: fps 0 = requestAnimationFrame; nonzero
+// simulate_infinite_loop = never return from main.
+const web_loop_fps = 0;
+const web_simulate_infinite_loop = 1;
 
 // zflecs allocates through std.heap.page_allocator, which on wasm calls
 // memory.grow behind emscripten's back. That fails on emscripten's fixed-size
@@ -63,9 +67,9 @@ pub fn main() !void {
 
     if (builtin.os.tag == .emscripten) {
         // raylib's web pacing (WindowShouldClose's emscripten_sleep, SetTargetFPS's
-        // WaitTime) isn't vsync-aligned and needs Asyncify; fps 0 = requestAnimationFrame.
-        // Never returns, so the defers above don't run.
-        std.os.emscripten.emscripten_set_main_loop(frame, 0, 1);
+        // WaitTime) isn't vsync-aligned and needs Asyncify. Never returns, so
+        // the defers above don't run.
+        std.os.emscripten.emscripten_set_main_loop(frame, web_loop_fps, web_simulate_infinite_loop);
     } else {
         rl.setTargetFPS(60);
         while (!rl.windowShouldClose()) frame();
