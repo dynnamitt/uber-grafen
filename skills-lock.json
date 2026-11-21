@@ -21,6 +21,13 @@
       "sourceType": "github",
       "skillPath": "skills/zig/zig-cinterop/SKILL.md",
       "computedHash": "8d727ca5110152e34a24f55a21880e272c8ddf669dbfb0279a0d3fa3436d240b"
+    },
+    "zig-raylib-5.5": {
+      "source": "rudedogg/zig-skills",
+      "commit": "1407415d67e6d5a4ed54ec2ba78b4935d32e5fe3",
+      "sourceType": "github",
+      "skillPath": "zig-raylib/SKILL.md",
+      "computedHash": "6a47b38894a71788bfd2006f2af51e904785b83e5349c3f34379e1bc1cc026de"
     }
   }
 }

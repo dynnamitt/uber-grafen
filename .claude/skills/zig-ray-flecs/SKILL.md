@@ -21,7 +21,7 @@ in your available-skills list counts as installed too, even if it was installed 
 | `zig-0-17` | Zig 0.17 API: this repo pins 0.17, and older tutorials mislead | yes |
 | `zig-best-practices` | Zig idioms for any `.zig` file | yes |
 | `zig-cinterop` | translate-c and C ABI work: zflecs and raylib wrap C | yes |
-| `zig-raylib-5.5` | raylib-zig bindings API (`rudedogg/zig-skills`) | no, optional |
+| `zig-raylib-5.5` | raylib-zig bindings API for drawing, input, textures, cameras | yes |
 
 If any skill marked "yes" is missing, tell the user it is missing and suggest:
 
@@ -29,16 +29,8 @@ If any skill marked "yes" is missing, tell the user it is missing and suggest:
 npx skills experimental_install -a claude-code   # restore everything pinned in skills-lock.json
 ```
 
-For `zig-raylib-5.5`, suggest it once when the work touches raylib calls (drawing, input,
-textures, cameras):
-
-```sh
-npx skills add rudedogg/zig-skills -s zig-raylib-5.5 -a claude-code
-```
-
-It targets Zig 0.15 and raylib 5.5. Where it disagrees with the zig-0-17 skill or with
-`zig-pkg/raylib_zig-*/` sources, the sources win. Installing it adds it to `skills-lock.json`,
-so the change shows up in git; commit it if the user wants it pinned for everyone.
+`zig-raylib-5.5` targets Zig 0.15 and raylib 5.5. Where it disagrees with the zig-0-17 skill
+or with `zig-pkg/raylib_zig-*/` sources, the sources win.
 
 There is no Flecs skill on skills.sh (checked 2026-11). For zflecs, use the README and
 `src/tests.zig` under `zig-pkg/zflecs-*/`, plus the ECS conventions in `CLAUDE.md`.
