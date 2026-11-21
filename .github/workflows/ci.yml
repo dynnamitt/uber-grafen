@@ -57,8 +57,16 @@ jobs:
           path: ${{ steps.emsdk.outputs.path }}
           key: ${{ steps.emsdk.outputs.key }}
 
+      # wasm-ld only warns on a C/Zig extern signature mismatch, then makes the
+      # call trap at runtime (zflecs' ecs_set_id did this), so fail on it here.
       - name: Build for the browser
-        run: zig build -Dtarget=wasm32-emscripten -Doptimize=ReleaseSmall --summary all
+        shell: bash
+        run: |
+          zig build -Dtarget=wasm32-emscripten -Doptimize=ReleaseSmall --summary all 2>&1 | tee build.log
+          if grep -q 'signature mismatch' build.log; then
+            echo "::error::wasm-ld function signature mismatch (call traps on web)"
+            exit 1
+          fi
 
       - name: Show output
         run: ls -la zig-out/web

@@ -67,7 +67,6 @@ fn createResource(allocator: std.mem.Allocator) !*Resource {
 ## Advanced Topics
 
 - **Generic containers** (queues, stacks, trees): See [GENERICS.md](GENERICS.md)
-- **C library interop** (raylib, SDL, curl): See [C-INTEROP.md](C-INTEROP.md)
 - **Debugging memory leaks** (GPA, stack traces): See [DEBUGGING.md](DEBUGGING.md)
 
 ## Tooling
