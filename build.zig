@@ -2,6 +2,10 @@ const std = @import("std");
 const builtin = @import("builtin");
 const rlz = @import("raylib_zig");
 
+// emscripten's default 64 KiB stack overflows in Debug web builds (zig + flecs
+// frames); release builds don't check, so an overflow there corrupts memory.
+const web_stack_size = "1048576";
+
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -75,10 +79,12 @@ fn addWebBuild(
 
     // ASYNCIFY (on by default) lets main()'s plain while-loop yield to the
     // browser each frame, so main.zig needs no emscripten_set_main_loop.
+    var settings = emsdk.emccDefaultSettings(b.allocator, .{ .optimize = optimize });
+    try settings.put("STACK_SIZE", web_stack_size);
     const emcc_step = try emsdk.emccStep(b, &.{}, &.{ raylib_lib, app }, .{
         .optimize = optimize,
         .flags = emsdk.emccDefaultFlags(b.allocator, .{ .optimize = optimize }),
-        .settings = emsdk.emccDefaultSettings(b.allocator, .{ .optimize = optimize }),
+        .settings = settings,
         .shell_file_path = b.path("web/shell.html"),
         .install_dir = .{ .custom = "web" },
         .out_file_name = "index.html", // index.* so the folder serves as-is (GitHub Pages)

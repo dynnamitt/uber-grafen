@@ -49,8 +49,11 @@ Keep that boundary: systems that change state go in `sim`. Rendering reads ECS d
 - The app is compiled as a static library. raylib-zig's `emsdk.emccStep` then links it with raylib and flecs (it picks up libraries linked into the module graph) into `zig-out/web/index.*`, using `web/shell.html` as the page template.
 - **zflecs has no emscripten support**, so `build.zig` adds the emsdk sysroot include path to the `flecs` artifact. It also makes that artifact depend on **raylib's existing** "Activate EMSDK" step, found with `findStep`. Do not call `emsdk.activateEmsdkStep(b)` a second time: two activations run `emsdk update/install` concurrently in the same directory.
 - `emsdk` must stay in **our** `build.zig.zon` (lazy). raylib-zig's helpers resolve it from the root build.
-- `-sASYNCIFY` (on by default) lets `main`'s plain `while` loop yield to the browser, so `main.zig` has no web-specific code.
+- `-sASYNCIFY` (on by default) lets `main`'s plain `while` loop yield to the browser, so the frame loop has no web-specific code.
+- `main.zig` overrides `std.heap.page_allocator` on emscripten (`pub const os`): zflecs allocates through it, and Zig's wasm default calls `memory.grow`, which fails on emscripten's fixed heap (`panic: OOM`). The replacement must return aligned, zero-filled memory (zflecs' `DebugAllocator` relies on zeroed pages).
+- `STACK_SIZE` is raised from emscripten's 64 KiB (`web_stack_size` in build.zig); Debug web builds overflow the default.
+- CI fails the web build on any `wasm-ld: function signature mismatch` warning: wasm-ld turns such calls into runtime traps.
 
 ### ECS conventions (zflecs)
 
-Components are plain Zig structs registered with `ecs.COMPONENT`. Systems are registered with `ecs.ADD_SYSTEM(world, name, phase, fn)`, where `fn` takes slices of components (optionally `*ecs.iter_t` first, e.g. for `it.delta_time`). The zflecs README and its `src/tests.zig` (in `zig-pkg/zflecs-*/`) are the best API reference.
+Components are plain Zig structs registered with `ecs.COMPONENT`. Systems are registered with `ecs.ADD_SYSTEM(world, name, phase, fn)`, where `fn` takes slices of components (optionally `*ecs.iter_t` first, e.g. for `it.delta_time`). The zflecs README and its `src/tests.zig` (in `zig-pkg/zflecs-*/`) are the best API reference, except: **never use `ecs.set`, `ecs.set_pair` or `ecs.set_id`.** zflecs declares `ecs_set_id` with a wrong return type, so these trap on web; use `set` in `sim.zig`.
