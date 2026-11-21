@@ -30,6 +30,21 @@ jobs:
       - name: Build app
         run: zig build --summary all
 
+      # The template's rename must leave a buildable package, the right Pages
+      # URL and no old names. The repo name contains the template name on
+      # purpose: the URL must keep it. Skipped in repos made from the
+      # template: the script deletes itself.
+      - name: Template rename check
+        if: hashFiles('runme1st.sh') != ''
+        run: |
+          git remote set-url origin https://github.com/CI-Owner/zig-rayflecs-ci.git
+          ./runme1st.sh ci-game
+          url=ci-owner.github.io/zig-rayflecs-ci/
+          grep -q "$url" README.md
+          if git grep -nI -e zig-rayflecs -e zig_rayflecs -- . ':!.github' | grep -v "$url"; then exit 1; fi
+          zig build test --summary all
+          zig build --summary all
+
   web:
     runs-on: ubuntu-latest
     steps:
