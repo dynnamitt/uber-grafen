@@ -30,6 +30,15 @@ jobs:
       - name: Build app
         run: zig build --summary all
 
+      # The template's rename must leave a valid package and no old names.
+      # Skipped in repos made from the template: the script deletes itself.
+      - name: Template rename check
+        if: hashFiles('runme1st.sh') != ''
+        run: |
+          ./runme1st.sh ci-check
+          if git grep -nI -e zig-rayflecs -e zig_rayflecs -- . ':!.github'; then exit 1; fi
+          zig build test --summary all
+
   web:
     runs-on: ubuntu-latest
     steps:
