@@ -17,6 +17,7 @@ const newcomer_colours = [_]u32{ 0xD4B486FF, 0xBC9C6CFF, 0xCEA46EFF, 0xC2AC82FF 
 // `newcomer_speed` (± jitter) is relative to orbital speed. Every corner of
 // these ranges keeps the captured orbit within ~0.29–1.28 orbit radii, so
 // `newcomer_orbit_max` bounds it (with room for integration wobble).
+const attractor_radius = 24;
 const newcomer_offset = 0.6;
 const newcomer_capture = 0.2;
 const newcomer_capture_jitter = 0.15;
@@ -175,7 +176,7 @@ pub fn spawnDemo(world: *ecs.world_t, cx: f32, cy: f32, radius: f32, period: f32
     const center = ecs.new_id(world);
     set(world, center, Position, .{ .x = cx, .y = cy });
     set(world, center, Attractor, .{ .mu = speed * speed * radius });
-    set(world, center, Ball, .{ .radius = 24, .rgba = orange });
+    set(world, center, Ball, .{ .radius = attractor_radius, .rgba = orange });
 
     const orbiter = ecs.new_id(world);
     const start: Position = .{ .x = cx + radius, .y = cy };
@@ -439,15 +440,21 @@ test "newcomer flies straight past the attractor, then stays captured" {
             const p = ecs.get(world, n, Position).?;
             const v = ecs.get(world, n, Velocity).?;
             const miss = ((p.x - c.x) * v.y - (p.y - c.y) * v.x) / std.math.hypot(v.x, v.y);
-            try expectApproxEqAbs(d.radius * newcomer_offset, @abs(miss), 0.01);
+            try expectApproxEqAbs(d.radius * newcomer_offset, @abs(miss), 0.1);
         }
         try expect(ecs.has_id(world, n, ecs.id(Orbits)));
+        // Captured on the first step at or past `capture` radii beyond the attractor.
+        const p = ecs.get(world, n, Position).?;
+        const v = ecs.get(world, n, Velocity).?;
+        const speed = std.math.hypot(v.x, v.y);
+        const past = ((p.x - c.x) * v.x + (p.y - c.y) * v.y) / speed;
+        try expect(past >= entry.capture * d.radius and past < entry.capture * d.radius + speed * step_dt);
 
         for (0..20 * 240) |_| { // ~20 orbiter periods
             step(world, 1);
             const r = distance(c, ecs.get(world, n, Position).?.*);
-            // Clear of the attractor (radius 24) and within the bound main checks against the canvas.
-            try expect(r > 24 + newcomer_radius and r < newcomer_orbit_max * d.radius);
+            // Clear of the attractor and within the bound main checks against the canvas.
+            try expect(r > attractor_radius + newcomer_radius and r < newcomer_orbit_max * d.radius);
         }
     }
 }

@@ -24,7 +24,7 @@ comptime {
     std.debug.assert(orbit_radius * sim.newcomer_orbit_max + sim.newcomer_radius < height / 2);
 }
 // Perf readout: top-right, right-aligned, raylib's default font size.
-// The buffer fits any i32 FPS and any f32 ms pair.
+// The buffer fits any i32 FPS and any sane ms pair.
 const stats_margin = 16;
 const stats_font_size = 20;
 const stats_line_gap = 4;
@@ -86,7 +86,8 @@ pub fn main() !void {
     sim.register(world);
     demo = sim.spawnDemo(world, width / 2, height / 2, orbit_radius, orbit_period);
     // raylib seeds its RNG from the clock in initWindow.
-    var prng = std.Random.DefaultPrng.init(@intCast(rl.getRandomValue(0, std.math.maxInt(i32))));
+    // max - 1: raylib computes max - min + 1, which overflows (a UBSan trap) at maxInt.
+    var prng = std.Random.DefaultPrng.init(@intCast(rl.getRandomValue(0, std.math.maxInt(i32) - 1)));
     sim.spawnNewcomers(world, demo, prng.random(), newcomer_count, newcomer_max_dist, newcomer_jitter);
 
     balls = try sim.ballQuery(world);
@@ -135,8 +136,9 @@ fn frame() callconv(.c) void {
         }
     }
 
-    // Work = sim steps + draw calls, up to here. Flush raylib's last draw
-    // batch first so it counts; the present (buffer swap, vsync and
+    // CPU work = sim steps + issuing draw calls, up to here. Flush raylib's
+    // last draw batch first so it counts. GPU time isn't measured (GL runs
+    // asynchronously, so it shows up at present); the present (buffer swap, vsync and
     // setTargetFPS waits) is idle time and stays out. On web performance.now()
     // is coarsened (~0.1 ms), so read the mean, not one frame.
     rlDrawRenderBatchActive();
@@ -144,7 +146,7 @@ fn frame() callconv(.c) void {
     // Not rl.drawFPS: its lime/orange/red colours ignore the theme.
     var buf: [stats_buf_len]u8 = undefined;
     drawStat(std.fmt.bufPrintSentinel(&buf, "{d} FPS", .{rl.getFPS()}, 0) catch unreachable, 0);
-    drawStat(std.fmt.bufPrintSentinel(&buf, "work {d:.2}/{d:.2} ms", .{ stats.mean_ms, stats.max_ms }, 0) catch unreachable, 1);
+    drawStat(std.fmt.bufPrintSentinel(&buf, "cpu {d:.2}/{d:.2} ms", .{ stats.mean_ms, stats.max_ms }, 0) catch "cpu ?", 1);
 }
 
 // rlgl, part of the raylib library; raylib-zig doesn't export it as a module.
