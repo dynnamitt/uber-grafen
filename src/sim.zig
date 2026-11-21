@@ -48,8 +48,11 @@ pub const Orbits = struct {};
 /// `center` along its velocity, then trades this for `(Orbits, center)`.
 pub const Capture = struct { after: f32 };
 
-// Query variable for the center of `(Orbits, $center)` / `(Capture, $center)`.
-const center_var = "$center";
+// Fields of the extra terms `register` appends after each system's own params.
+const gravity_center_pos = 2;
+const gravity_center_attractor = 3;
+const capture_data = 2;
+const capture_center_pos = 3;
 
 // zflecs declares ecs_set_id as returning entity_t, but flecs 4.1 returns void.
 // Native ABIs ignore the bogus return value; on wasm, wasm-ld replaces the call
@@ -65,14 +68,10 @@ fn setPair(world: *ecs.world_t, entity: ecs.entity_t, comptime T: type, target: 
     ecs_set_id(world, entity, ecs.pair(ecs.id(T), target), @sizeOf(T), &val);
 }
 
-/// Terms matching `(rel, $center)` with the center's `Position`, plus
-/// `Attractor` when `with_attractor`; appended after a system's own terms.
-fn centerTerms(comptime rel: type, comptime with_attractor: bool) [if (with_attractor) 3 else 2]ecs.term_t {
-    const head = [_]ecs.term_t{
-        .{ .first = .{ .id = ecs.id(rel) }, .second = .{ .name = center_var }, .inout = .In },
-        .{ .id = ecs.id(Position), .src = .{ .name = center_var }, .inout = .In },
-    };
-    return if (with_attractor) head ++ [_]ecs.term_t{.{ .id = ecs.id(Attractor), .src = .{ .name = center_var }, .inout = .In }} else head;
+/// Term for the center's `T`, found by following relationship `rel` up.
+/// Unlike a `$center` variable, this keeps the system's query fully cached.
+fn onCenter(comptime T: type, rel: ecs.entity_t) ecs.term_t {
+    return .{ .id = ecs.id(T), .src = .{ .id = ecs.Up }, .trav = rel, .inout = .In };
 }
 
 /// Registers components and systems on `world`.
@@ -84,12 +83,21 @@ pub fn register(world: *ecs.world_t) void {
     ecs.COMPONENT(world, Attractor);
     ecs.TAG(world, Orbits);
     ecs.COMPONENT(world, Capture);
+    // `up` queries may only follow traversable relationships.
+    ecs.add_id(world, ecs.id(Orbits), ecs.Traversable);
+    ecs.add_id(world, ecs.id(Capture), ecs.Traversable);
     addSystem(world, "snapshot", ecs.OnLoad, snapshot, &.{});
     // gravity (PreUpdate) updates velocity before move (OnUpdate) uses it:
     // semi-implicit Euler, which keeps a circular orbit from spiralling out.
-    addSystem(world, "gravity", ecs.PreUpdate, gravity, &centerTerms(Orbits, true));
+    addSystem(world, "gravity", ecs.PreUpdate, gravity, &.{
+        onCenter(Position, ecs.id(Orbits)),
+        onCenter(Attractor, ecs.id(Orbits)),
+    });
     addSystem(world, "move", ecs.OnUpdate, move, &.{});
-    addSystem(world, "capture", ecs.PostUpdate, capture, &centerTerms(Capture, false));
+    addSystem(world, "capture", ecs.PostUpdate, capture, &.{
+        .{ .id = ecs.pair(ecs.id(Capture), ecs.Wildcard), .inout = .In },
+        onCenter(Position, ecs.id(Capture)),
+    });
 }
 
 /// Every system may split across `ecs.set_threads` workers (none by default).
@@ -104,11 +112,11 @@ fn snapshot(positions: []const Position, prevs: []PrevPosition) void {
     for (positions, prevs) |p, *prev| prev.* = .{ .x = p.x, .y = p.y };
 }
 
-// Fields 2.. come from `centerTerms`: the center's are shared, so read [0].
+// The center's fields are shared by the whole table: read [0].
 fn gravity(it: *ecs.iter_t, positions: []const Position, velocities: []Velocity) void {
     const dt = it.delta_time;
-    const c = ecs.field(it, Position, 3).?[0];
-    const a = ecs.field(it, Attractor, 4).?[0];
+    const c = ecs.field(it, Position, gravity_center_pos).?[0];
+    const a = ecs.field(it, Attractor, gravity_center_attractor).?[0];
     for (positions, velocities) |p, *v| {
         const dx = c.x - p.x;
         const dy = c.y - p.y;
@@ -130,9 +138,9 @@ fn move(it: *ecs.iter_t, positions: []Position, velocities: []const Velocity) vo
 }
 
 fn capture(it: *ecs.iter_t, positions: []const Position, velocities: []const Velocity) void {
-    const captures = ecs.field(it, Capture, 2).?;
-    const center = ecs.field_src(it, 3);
-    const c = ecs.field(it, Position, 3).?[0];
+    const captures = ecs.field(it, Capture, capture_data).?;
+    const center = ecs.field_src(it, capture_center_pos);
+    const c = ecs.field(it, Position, capture_center_pos).?[0];
     for (it.entities(), positions, velocities, captures) |e, p, v, cap| {
         // Distance past center along v, scaled by |v| on both sides.
         if ((p.x - c.x) * v.x + (p.y - c.y) * v.y < cap.after * std.math.hypot(v.x, v.y)) continue;
@@ -534,30 +542,30 @@ test "ballQuery yields both demo balls" {
 }
 
 test "worker threads give the same result as one thread" {
-    var runs: [2][]Position = undefined;
-    for ([_]i32{ 0, 4 }, &runs) |threads, *out| {
+    const balls = 202; // 200 newcomers + attractor + orbiter
+    var runs: [2][balls]Position = undefined;
+    // zflecs allows one world at a time, so run them one after the other.
+    for (&runs, [_]i32{ 0, 4 }) |*out, threads| {
         const world = ecs.init();
         defer _ = ecs.fini(world);
         register(world);
         if (threads > 0) ecs.set_threads(world, threads);
         const d = spawnDemo(world, 0, 0, 150, 4);
         var prng = std.Random.DefaultPrng.init(7);
-        spawnNewcomers(world, d, prng.random(), 200, 600, 100);
+        spawnNewcomers(world, d, prng.random(), balls - 2, 600, 100);
         step(world, 600); // past every capture
+        try std.testing.expectEqual(0, ecs.count_id(world, ecs.pair(ecs.id(Capture), ecs.Wildcard)));
 
-        out.* = try std.testing.allocator.alloc(Position, 202);
         const q = try ballQuery(world);
         defer ecs.query_fini(q);
         var n: usize = 0;
         var it = ecs.query_iter(world, q);
         while (ecs.query_next(&it)) {
-            // Fresh world, no deletes: the 202 balls have consecutive ids from the center.
-            for (it.entities(), ecs.field(&it, Position, 0).?) |e, p| out.*[@intCast(e - d.center)] = p;
+            // Fresh world, no deletes: ball ids run consecutively from the attractor.
+            for (it.entities(), ecs.field(&it, Position, 0).?) |e, p| out[@intCast(e - d.center)] = p;
             n += it.count();
         }
-        try std.testing.expectEqual(@as(usize, 202), n);
-        try std.testing.expectEqual(0, ecs.count_id(world, ecs.pair(ecs.id(Capture), ecs.Wildcard)));
+        try std.testing.expectEqual(@as(usize, balls), n);
     }
-    defer for (runs) |r| std.testing.allocator.free(r);
-    try std.testing.expectEqualSlices(Position, runs[0], runs[1]);
+    try std.testing.expectEqualSlices(Position, &runs[0], &runs[1]);
 }
