@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>uber-graphen</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #14161a; color: #8892a0;
+                 font: 14px system-ui, sans-serif; }
+    body { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; }
+    canvas { display: block; max-width: 100vw; height: auto; image-rendering: auto; }
+    #status:empty { display: none; }
+  </style>
+</head>
+<body>
+  <canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
+  <div id="status">loading…</div>
+  <script>
+    var started = false;
+    var Module = {
+      canvas: document.getElementById("canvas"),
+      onRuntimeInitialized: function () { started = true; },
+      setStatus: function (text) { document.getElementById("status").textContent = text; },
+      print: function (text) { console.log(text); },
+      printErr: function (text) { console.error(text); },
+    };
+    // Only startup failures replace the canvas status; later errors just log.
+    window.onerror = function () { if (!started) Module.setStatus("failed to start — see the console"); };
+  </script>
+  {{{ SCRIPT }}}
+</body>
+</html>
